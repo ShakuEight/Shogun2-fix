@@ -1,8 +1,8 @@
 // Version resource of the public release DLL (shown in the file's Properties > Details).
 #include <winver.h>
 
-#define PF_VER        1,0,1,0
-#define PF_VER_STR    "1.0.1.0"
+#define PF_VER        1,0,0,0
+#define PF_VER_STR    "1.0.0.0"
 
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION    PF_VER

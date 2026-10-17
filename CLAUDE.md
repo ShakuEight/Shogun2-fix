@@ -6,13 +6,13 @@ Runtime fixes for Total War: Shogun 2 (the original 32-bit `Empire.Retail.dll`),
 
 | Fix | Folder | State |
 |---|---|---|
-| pathfix: formation through gates, doorways, corners | `fixes/pathfix/` | public release 1.0.1, dev build v42 |
+| pathfix: formation through gates, doorways, corners | `fixes/pathfix/` | public release 1.0, dev build v42 |
 | aiming fix | (planned) | not started |
 | shooting fix | (planned) | not started |
 
 Each fix keeps its own history and notes in `fixes/<name>/CLAUDE.md` (Claude Code loads it when
 working in that folder). The pathfix history, every phase and run from the first hypothesis to
-release 1.0.1, is in `fixes/pathfix/CLAUDE.md`. Shared engine knowledge goes here or in `docs/re/`.
+release 1.0, is in `fixes/pathfix/CLAUDE.md`. Shared engine knowledge goes here or in `docs/re/`.
 
 ## Session rules (mandatory)
 

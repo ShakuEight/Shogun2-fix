@@ -6,7 +6,7 @@ own folder. Install by copying it in, uninstall by deleting it.
 
 | Fix | Problem it fixes | State |
 |---|---|---|
-| [**pathfix**](fixes/pathfix/README.md) | Units ordered through gates, doorways and round corners stop in a stretched block and file through one man at a time | Public release 1.0.1 |
+| [**pathfix**](fixes/pathfix/README.md) | Units ordered through gates, doorways and round corners stop in a stretched block and file through one man at a time | Public release 1.0 |
 | aiming fix | | Planned |
 | shooting fix | | Planned |
 

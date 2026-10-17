@@ -274,7 +274,8 @@ anything without that variable. Every handler runs its fix code before the captu
 G cannot tell the difference. The harness gained a play run (nothing written, G acts) and a
 key run (keys after P).
 
-**Public release 1.0** splits the player's DLL from the dev DLL. The release source
+**Public release 1.0** splits the player's DLL from the dev DLL (first packaged from v41,
+repackaged with v42's park release before it was published). The release source
 (`fixes/pathfix/release/pathfix_release.cpp`) contains only variant G's code path: five hooks,
 the soldier tables, lead the turn, no damping, radius lanes, the release with its hold and end
 gap, and the self-checks. G is always on. It has no keys, log, capture, crash handler or test
@@ -282,7 +283,7 @@ exports. Its correctness argument is an equivalence test, since it was not re-me
 the harness runs the same scenarios through the dev DLL in G and through the release DLL, and
 every result must match.
 
-**v42 and release 1.0.1.** The first bug report from play: four 200-man units sent through a
+**v42 and the published release 1.0.** The first bug report from play: four 200-man units sent through a
 gatehouse to one spot with a shift-queued second order. With the fix off all four went on; with
 G one to three stayed at the spot for good, live and in the replay. Two recorded replays and a
 decode of how a unit finishes an order explained it. The unit's behaviour stack pops the move
@@ -353,5 +354,5 @@ radius (v35), and one distance argument (v38 to v40).
 - A leader parked with more than D + depth + 3 m of path left is not released by the park rule,
   so such a unit could finish at its parked block, short of its destination layout. Not seen yet.
 - The fix has only been validated at 3x game speed.
-- The park release of v42 / 1.0.1 has passed the offline harness and was accepted in game, but
+- The park release of v42 / 1.0 has passed the offline harness and was accepted in game, but
   no recording of the fixed replay has been analysed yet.

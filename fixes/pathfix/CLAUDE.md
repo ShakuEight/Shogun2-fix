@@ -9,7 +9,7 @@ CLAUDE.md.
 
 Since 2026-10-17 `archive/`, `analysis/`, `sim/` and `docs/research/` are local only (ignored
 by git, absent from the public history, which is one squashed commit). GitHub holds the current dev
-build (v42 since 2026-10-17), the public release source (1.0.1), the harness, the runbook and the READMEs.
+build (v42 since 2026-10-17), the public release source (1.0), the harness, the runbook and the READMEs.
 
 ## Original introduction
 
@@ -927,3 +927,12 @@ dinput8.dll.v40.bak; v41 still dinput8.dll.41). The user accepted the fix ("good
 same day; no P recording of the replay test was collected. v42 and release 1.0.1 committed and
 pushed to GitHub on 2026-10-17 (second commit on top of the squashed history; path references
 moved to E:\_SHOGUN\Shogun2_fixes in the same commit).
+
+Release renamed to 1.0, 2026-10-17 (user: "make this the 1.0 version"; the v41 package of 1.0 was
+never published). version.rc 1.0.0.0, release.bat VERSION=1.0, player README without the 1.0.1
+entry, docs say 1.0. release.bat: all tests passed (full 134 x2, geo 32, play 18, pkey 9, rec
+18, crash, release_dev 79, release_pub 86, equivalence 79/79); package release/Shogun2-PathFix-1.0
+(dinput8.dll 123904 bytes, SHA-256 871867DC...C28E). The v41 1.0 package went to
+release/_previous/Shogun2-PathFix-1.0_20261017_161445, the 1.0.1 package to
+release/_previous/Shogun2-PathFix-1.0.1_unpublished. Tag v1.0.1 removed; tag v1.0 and the
+GitHub release carry the zip.

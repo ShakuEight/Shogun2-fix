@@ -57,5 +57,5 @@ slots (units stacked on one spot), the controller never becomes ready and the qu
 starts. In the vanilla game the leader's slot runs ahead of him until the front reaches the path
 end, so the formation moves always come. Variant G's anchor could park the leader in a slot
 short of the end; being ready he was never re-ordered, the cursor stopped, the front stayed
-short of the end. Dev build v42 / release 1.0.1 add the park release (see
+short of the end. Dev build v42 / release 1.0 add the park release (see
 `fixes/pathfix/README.md`, section 3.6).

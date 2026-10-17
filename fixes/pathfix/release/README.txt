@@ -1,5 +1,5 @@
-Shogun 2 Path Fix 1.0.1
-=======================
+Shogun 2 Path Fix 1.0
+=====================
 
 An unofficial fix for Total War: SHOGUN 2 battles.
 
@@ -68,12 +68,9 @@ game's own.
 
 CHANGES
 
-1.0.1  Units sent through a gate to the same spot as other units, with a
-       next order queued (Shift + click), could stay at the spot for good
-       and never start the queued order. Fixed.
 1.0    First release.
 
 
-Version 1.0.1, built from development build v42.
+Version 1.0, built from development build v42.
 Copyright 2026 ShakuEight. Licensed under the Apache License 2.0 (see LICENSE and NOTICE).
 Source: https://github.com/ShakuEight/Shogun2-fix

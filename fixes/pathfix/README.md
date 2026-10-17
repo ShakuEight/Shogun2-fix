@@ -7,7 +7,7 @@ corners on wider lines.
 
 | Build | Where | What |
 |---|---|---|
-| **Public release 1.0.1** | `release\Shogun2-PathFix-1.0.1\` at the repository root, built by `release.bat` | Variant G with the park release, always on. No keys, log, recording or crash handler, and only the five hooks G needs. Copy in to install, delete to uninstall. See section 7 |
+| **Public release 1.0** | `release\Shogun2-PathFix-1.0\` at the repository root, built by `release.bat` | Variant G with the park release, always on. No keys, log, recording or crash handler, and only the five hooks G needs. Copy in to install, delete to uninstall. See section 7 |
 | **Dev build v42** | `build\dinput8.dll`, built by `build.bat` | I toggles G, P starts and stops a recording. Sections 1 to 6 describe it unless stated otherwise |
 
 How the fix was found is in [ARCHITECTURE.md](ARCHITECTURE.md).
@@ -393,7 +393,7 @@ reference it uses are shared with the other fixes and live at the repository roo
    root with `dinput8.dll`, `README.txt`, `SHA256.txt`, `LICENSE` and `NOTICE`, and zips it. An older package of the same version is moved to
    `release\_previous\`.
 
-| | Dev build v42 | Public release 1.0.1 |
+| | Dev build v42 | Public release 1.0 |
 |---|---|---|
 | Source | `fixes/pathfix/src/pathfix.cpp` | `fixes/pathfix/release/pathfix_release.cpp` |
 | Fix | off at launch, I toggles G | G always on |
@@ -405,12 +405,13 @@ reference it uses are shared with the other fixes and live at the repository roo
 
 The release source is the dev build's mode-G code path with everything else removed. The
 logger compiles to nothing (`PATHFIX_NO_LOG`), and the version resource reads "Shogun 2 Path
-Fix 1.0.1.0". 1.0.1 adds the park release of dev v42.
+Fix 1.0.0.0". Release 1.0 was first packaged from v41 and repackaged with the park release of
+dev v42 before it was published.
 
 **Equivalence test.** The harness mode `release` runs the same scenarios twice: lead the turn,
 the side-object robustness cases, no crowd damping, radius lanes, release beyond the choke, the
 frame self-check and unloading. The first run uses the dev DLL switched to G through its test
-export, the reference with 79 checks (71 in 1.0; the park release scenario added 8). The second
+export, the reference with 79 checks (71 in the v41 package; the park release scenario added 8). The second
 uses the release DLL, with those 79 plus 7 release-only checks. The release-only checks confirm:
 
 - there are no test exports;

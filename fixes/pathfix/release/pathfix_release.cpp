@@ -1,6 +1,6 @@
-// pathfix_release.cpp -- public release of the Shogun 2 path fix (release 1.0.1, from dev build v42).
+// pathfix_release.cpp -- public release of the Shogun 2 path fix (release 1.0, from dev build v42).
 //
-// 1.0.1: park release (dev v42). After the formation was laid past a narrow stretch, a unit whose
+// Park release (dev v42, in 1.0 before its publication). After the formation was laid past a narrow stretch, a unit whose
 // leader had reached his place short of the path end could stay "not finished" for good when
 // men on go-to orders could not reach their places (several units sent to one spot), so a
 // shift-queued next order never started. The block front now goes past the path end in that

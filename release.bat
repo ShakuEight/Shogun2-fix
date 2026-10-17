@@ -10,7 +10,7 @@ REM Needs the game's empire.retail.dll for the tests; set GAME_DIR if not in the
 setlocal
 cd /d "%~dp0"
 REM Today the public DLL holds the path fix only, so the package is the path fix's.
-set "VERSION=1.0.1"
+set "VERSION=1.0"
 set "PKGNAME=Shogun2-PathFix"
 set "PKGREADME=fixes\pathfix\release\README.txt"
 call "%~dp0build.bat"

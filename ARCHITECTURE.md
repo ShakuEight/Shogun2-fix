@@ -2,7 +2,7 @@
 
 How the repository is put together: the runtime, the two builds, the build system, the tests,
 and the shared reverse-engineering base. Each fix's own story is in its folder. The path fix's
-story, from the first hypothesis to release 1.0.1, is in
+story, from the first hypothesis to release 1.0, is in
 [fixes/pathfix/ARCHITECTURE.md](fixes/pathfix/ARCHITECTURE.md).
 
 Function names such as `FUN_101bc880` are Ghidra names in the original 32-bit

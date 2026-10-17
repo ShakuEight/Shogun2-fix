@@ -35,7 +35,7 @@ GAME = ARGS[0] if ARGS else r'E:\SteamLibrary\steamapps\common\Total War SHOGUN 
 BUILD = os.path.join(REPO, 'build')
 OUT = os.path.join(BUILD, 'test_pathfix')
 EXPECT = {'full': 134, 'geo': 32, 'play': 18, 'pkey': 9, 'rec': 18}   # v42 (v41: full 124; v40: 122)
-EXPECT_RELEASE = {'release_dev': 79, 'release_pub': 86}   # release 1.0.1: 79 shared + RS1-3 + RF1-4 (1.0: 71 / 78)
+EXPECT_RELEASE = {'release_dev': 79, 'release_pub': 86}   # release 1.0 (v42): 79 shared + RS1-3 + RF1-4 (v41 package: 71 / 78)
 RELEASE_DLL = os.path.join(REPO, 'build_release', 'dinput8.dll')
 
 game_dll = os.path.join(GAME, 'empire.retail.dll')
