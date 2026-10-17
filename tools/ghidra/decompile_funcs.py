@@ -12,6 +12,8 @@
 # the Windows batch launcher splits arguments on "=".)
 #
 # Existing files are never overwritten blind (tmp / .bak / move).
+# An entry with no function (e.g. a handler reached only through a table) gets one created in
+# memory; with -readOnly (as ghx86.bat runs it) the project is not changed.
 #
 # @category pathfix
 # @runtime Jython
@@ -66,6 +68,15 @@ def run():
         func = funcmgr.getFunctionAt(addr)
         if func is None:
             func = funcmgr.getFunctionContaining(addr)
+        if func is None:
+            # Code reached only through pointer tables (command handlers) has no function yet.
+            # Create it in memory: ghx86.bat opens the project -readOnly, so nothing is saved.
+            try:
+                func = createFunction(addr, None)
+            except:
+                func = None
+            if func is not None:
+                println("decompile_funcs: created in-memory function at %s" % entry_text)
         if func is None:
             println("decompile_funcs: no function at %s" % entry_text)
             continue

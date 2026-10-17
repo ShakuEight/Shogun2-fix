@@ -18,6 +18,7 @@ function names and offsets.
 | `re/soldier_steering_x86.md`, `re/steering_x86.md` | Per-soldier orders, navmesh paths, per-tick motion, soft collision, crowd damping |
 | `re/waypoint_choice_x86.md` | The funnel and how a corner apex is chosen |
 | `re/request_radius_x86.md` | The soldier's replan request radius |
+| `re/console_commands_x86.md` | Startup commands and `user.script.txt`, the `replay` startup mode, the battle phase and the pointer path the autorun tool reads |
 
 Where a note quoted decompiler output or disassembly, the quote is replaced by a marker such as
 `[x86 decompile quote removed]` or `[decompiled statement removed]`.
@@ -30,7 +31,7 @@ regenerates them from their own copy of the game with the scripts in `tools/ghid
 
 | Path | Content | Regenerate with |
 |---|---|---|
-| `re/walk_decompiles/`, `re/x64_decompiles/`, `re/anchor_decompiles/` | Ghidra decompiles, x86 and x64 | `tools/ghidra/headless_decompile.bat` (`decompile_funcs.py`) |
+| `re/walk_decompiles/`, `re/x64_decompiles/`, `re/anchor_decompiles/`, `re/console_decompiles/` | Ghidra decompiles, x86 and x64 | `tools/ghidra/headless_decompile.bat` (`decompile_funcs.py`), `find_string_refs.py` |
 | `re/listings/` | Disassembly listings of hooked regions | `tools/ghidra/dump_listing.py` |
 | `re/prologues_*.txt` | Entry bytes of every hooked function | `tools/ghidra/dump_prologue.py` |
 | `re/functions_x86.csv` | Every function range in `Empire.Retail.dll` | `tools/ghidra/dump_functions.py` |

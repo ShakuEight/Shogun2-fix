@@ -20,6 +20,7 @@ endif()
 option(PUBLIC_RELEASE "Build the public release DLL: release sources only, no log, no capture, no keys" OFF)
 option(BUILD_TESTS "Build the offline harness executables (dev build only)" ON)
 option(FIX_PATHFIX "Path fix: units keep formation through gates, doorways and corners (fixes/pathfix)" ON)
+option(TOOL_AUTORUN "Dev tool: version.dll proxy for unattended replay runs (tools/autorun); ignored with PUBLIC_RELEASE" OFF)
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
 
@@ -47,4 +48,11 @@ set_target_properties(dinput8 PROPERTIES PREFIX "" OUTPUT_NAME "dinput8")
 # --- fixes (one line per fix) --------------------------------------------------------------
 if(FIX_PATHFIX)
     include(fixes/pathfix/pathfix.cmake)
+endif()
+
+# --- developer tools (separate proxy DLLs, never part of the public release) ---------------
+# autorun: build/version.dll, the in-game side of the unattended replay runner
+# (tools/autorun/README.md). Turn on with build.bat -DTOOL_AUTORUN=ON.
+if(TOOL_AUTORUN AND NOT PUBLIC_RELEASE)
+    include(tools/autorun/autorun.cmake)
 endif()

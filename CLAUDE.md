@@ -10,6 +10,11 @@ Runtime fixes for Total War: Shogun 2 (the original 32-bit `Empire.Retail.dll`),
 | aiming fix | (planned) | not started |
 | shooting fix | (planned) | not started |
 
+Developer tools are separate proxy DLLs under `tools/` (never in a release):
+`tools/autorun/` = `version.dll`, unattended replay runs (see "Build and test loop"). To play a
+replay or test a build in the live game, use the project skill `autorun-replay`
+(`.claude/skills/autorun-replay/SKILL.md`) instead of asking the user to click through the game.
+
 Each fix keeps its own history and notes in `fixes/<name>/CLAUDE.md` (Claude Code loads it when
 working in that folder). The pathfix history, every phase and run from the first hypothesis to
 release 1.0, is in `fixes/pathfix/CLAUDE.md`. Shared engine knowledge goes here or in `docs/re/`.
@@ -55,7 +60,8 @@ release 1.0, is in `fixes/pathfix/CLAUDE.md`. Shared engine knowledge goes here 
   prologues, functions_x86.csv and other CSV exports; see docs/README.md). Unredacted note
   originals in `private/full_docs/` (local only).
 - `tools/ghidra/` headless scripts + `headless_decompile.bat`, `ghx86.bat` (-scriptPath
-  `E:\_SHOGUN\Shogun2_fixes\tools\ghidra`); `tools/re/` stack_calc.py etc.; `tools/runs/collect_runs.py`
+  `E:\_SHOGUN\Shogun2_fixes\tools\ghidra`); `tools/re/` stack_calc.py etc.; `tools/autorun/` (dev-tool
+  version.dll proxy + `autorun.py` replay driver; local runs in `tools/autorun/data/`); `tools/runs/collect_runs.py`
   (into `fixes/pathfix/data/runs/` by default); `tools/release/package.py`.
 - `data/` shared RE data (call graphs), `logs/` Ghidra logs: not in git.
 - Build trees: `build/` (dev: `build.bat`), `build_release/` (public DLL: `release.bat`, CMake
@@ -136,6 +142,11 @@ from the x64 decompile.
 - Config param system: FUN_1009f4e0 registers named floats (value at
   obj+0x5C), e.g. ENTITY_ACTION_ATTACK_CORRIDOR_FACTOR = 1.1f. Patchable
   without hooks; untested as a fix lever.
+- Console/startup commands (FUN_1126bab0 registrar) run from user.script.txt
+  at startup; a command's usage text can name it differently from its
+  registered name (`exit_after_battle` usage = `force_exit_after_battle`).
+  The tick object's byte +0x58 is NOT battle-over (also set on no-tick
+  frames); the battle phase at [[tickobj+0xB4]+0x14] is (decided 7/9/10/11).
 
 ## Decision 2026-10-13: fix target is x86
 
@@ -155,6 +166,15 @@ needed to read a function.
   version.dll / winmm.dll / dxgi.dll).
 - Repro: custom battle, one unit, move command through a narrow gap; same
   setup every time so captures are comparable.
-- Shogun 2 does not accept a replay path on the CLI; menu automation
-  (AutoHotKey/pyautogui) is needed for an unattended loop.
+- Unattended replay runs (2026-10-17): `python tools\autorun\autorun.py
+  "<replay name or path>" [--capture]`. No CLI switch and no menu automation:
+  the driver appends `game_startup_mode replay "<file>";` to
+  `%APPDATA%\The Creative Assembly\Shogun2\scripts\user.script.txt` (restored
+  afterwards), starts the game minimized, and the dev-tool proxy
+  `version.dll` (tools/autorun, CMake option TOOL_AUTORUN, installed with
+  `autorun.py --install`) reports the battle phase over a named pipe and posts
+  WM_CLOSE when the battle is decided. Battles run at full speed minimized.
+  Details: tools/autorun/README.md, docs/re/console_commands_x86.md.
 - Multiplayer: an injected movement fix desyncs; single player / replay only.
+  Replays played with a movement fix active desync too (logs\replay_desync.txt)
+  and may end differently from the recording.

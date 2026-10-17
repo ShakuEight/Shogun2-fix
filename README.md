@@ -68,6 +68,8 @@ tools/
   re/               stack_calc.py (hook stack offsets), prologue checks, anchors
   runs/             collect_runs.py (capture runs from the game folder)
   release/          package.py (release packaging)
+  autorun/          dev tool: version.dll proxy + driver that plays a replay unattended
+                    (game minimized, closed at the end of the battle)
 CMakeLists.txt      the proxy; one include line per fix (fixes/<name>/<name>.cmake)
 build.bat, test.bat, release.bat
 ```

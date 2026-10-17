@@ -12,6 +12,7 @@
 # captures and logs: gigabytes, kept on disk only (data/runs is filled by tools/runs/collect_runs.py)
 /data/
 /fixes/*/data/
+/tools/*/data/
 /logs/
 
 # local only: earlier builds, the research log, run analysis and offline models. The public
@@ -39,6 +40,7 @@ __pycache__/
 *.lock
 *.lock~
 /docs/re/walk_decompiles/
+/docs/re/console_decompiles/
 /docs/re/x64_decompiles/
 /docs/re/anchor_decompiles/
 /docs/re/listings/

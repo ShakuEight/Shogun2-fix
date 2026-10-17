@@ -4,6 +4,21 @@
 #include <cstdio>
 #include <cstdarg>
 
+// File names and the banner are compile-time parameters so a second proxy DLL (tools/autorun)
+// can share this file without writing into pathfix_log.txt. The defaults are the dinput8 names.
+#ifndef LOG_FILE_NAME
+#define LOG_FILE_NAME "pathfix_log.txt"
+#endif
+#ifndef LOG_RUN_ROOT
+#define LOG_RUN_ROOT "pathfix_runs\\"
+#endif
+#ifndef LOG_CAPTURE_ENV
+#define LOG_CAPTURE_ENV "PATHFIX_CAPTURE"
+#endif
+#ifndef LOG_BANNER
+#define LOG_BANNER "Pathfix dinput8 Proxy v1"
+#endif
+
 static FILE* g_logFile = nullptr;
 static FILE* g_recFile = nullptr;      // copy of every line while a recording is on (its folder's log)
 static CRITICAL_SECTION g_logCS;
@@ -22,7 +37,7 @@ bool LogCaptureMode() { return g_captureMode; }
 // Returns false (g_runDir = the game folder) when no folder could be made.
 static bool MakeRunDir(const char* gameDir, const SYSTEMTIME& st) {
     char root[MAX_PATH];
-    snprintf(root, sizeof(root), "%spathfix_runs\\", gameDir);
+    snprintf(root, sizeof(root), "%s" LOG_RUN_ROOT, gameDir);
     CreateDirectoryA(root, nullptr);
     char stamp[32];
     snprintf(stamp, sizeof(stamp), "%04d%02d%02d_%02d%02d%02d",
@@ -60,23 +75,23 @@ void LogInit() {
     GetLocalTime(&st);
     strcpy(g_runDir, dir);
     char env[8] = "";
-    g_captureMode = GetEnvironmentVariableA("PATHFIX_CAPTURE", env, sizeof(env)) > 0 && strcmp(env, "1") == 0;
+    g_captureMode = GetEnvironmentVariableA(LOG_CAPTURE_ENV, env, sizeof(env)) > 0 && strcmp(env, "1") == 0;
 #ifdef PATHFIX_RUN_FOLDERS
     if (g_captureMode) MakeRunDir(dir, st);
 #endif
     char path[MAX_PATH];
-    snprintf(path, sizeof(path), "%spathfix_log.txt", g_runDir);
+    snprintf(path, sizeof(path), "%s" LOG_FILE_NAME, g_runDir);
 
     g_logFile = fopen(path, "w");
     if (g_logFile) {
-        fprintf(g_logFile, "=== Pathfix dinput8 Proxy v1 ===\n");
+        fprintf(g_logFile, "=== " LOG_BANNER " ===\n");
         fprintf(g_logFile, "=== %04d-%02d-%02d %02d:%02d:%02d ===\n\n",
             st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
         char exe[MAX_PATH];
         GetModuleFileNameA(nullptr, exe, MAX_PATH);
         fprintf(g_logFile, "=== process %s (pid %lu) ===\n", exe, GetCurrentProcessId());
         fprintf(g_logFile, "=== capture %s, writing into %s ===\n",
-                g_captureMode ? "ON (PATHFIX_CAPTURE=1)" : "OFF", g_runDir);
+                g_captureMode ? "ON (" LOG_CAPTURE_ENV "=1)" : "OFF", g_runDir);
         fprintf(g_logFile, "=== each line starts with the local time [hh:mm:ss.mmm] ===\n\n");
         fflush(g_logFile);
     }
@@ -111,16 +126,16 @@ bool LogRecordingStart(int number, char* folderOut, size_t cap) {
         GetLocalTime(&st);
         if (MakeRunDir(g_gameDir, st)) {
             char path[MAX_PATH];
-            snprintf(path, sizeof(path), "%spathfix_log.txt", g_runDir);
+            snprintf(path, sizeof(path), "%s" LOG_FILE_NAME, g_runDir);
             g_recFile = fopen(path, "w");
             if (g_recFile) {
                 char exe[MAX_PATH];
                 GetModuleFileNameA(nullptr, exe, MAX_PATH);
-                fprintf(g_recFile, "=== Pathfix dinput8 Proxy v1: recording %d ===\n", number);
+                fprintf(g_recFile, "=== " LOG_BANNER ": recording %d ===\n", number);
                 fprintf(g_recFile, "=== started %04d-%02d-%02d %02d:%02d:%02d.%03d (timestamp_ms 0 in the CSV files) ===\n",
                         st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
                 fprintf(g_recFile, "=== process %s (pid %lu) ===\n", exe, GetCurrentProcessId());
-                fprintf(g_recFile, "=== session log: %spathfix_log.txt ===\n\n", g_gameDir);
+                fprintf(g_recFile, "=== session log: %s" LOG_FILE_NAME " ===\n\n", g_gameDir);
                 fflush(g_recFile);
                 ok = true;
             } else {

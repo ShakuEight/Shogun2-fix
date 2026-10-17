@@ -17,7 +17,18 @@ Shogun2.exe
     -> first DirectInput8Create: Fixes_InstallAll()  proxy/fixes.cpp
          -> <Name>_Install() of every compiled-in fix (in list order)
   process exit: Fixes_RemoveAll()                     (reverse order; every patched byte restored)
+
+  dev tool, optional: version.dll from its own folder  tools/autorun/src/dllmain.cpp
+    -> real SysWOW64\version.dll, 17 exports forwarded  tools/autorun/src/version_proxy.cpp
+    -> watcher + pipe threads: battle state, minimize, close   tools/autorun/src/autorun.cpp
 ```
+
+Developer tools are separate proxy DLLs, so they never mix with the fixes. The first one,
+`tools/autorun/` (`version.dll`), runs battle replays unattended for captures. It patches no code,
+installs no exception filter and reads no keys, so it cannot interfere with the fixes in
+`dinput8.dll`. Its log is `<game>\autorun_log.txt`, written by the shared `proxy/log.cpp`
+compiled with its own file name. Tools are built only with their CMake option
+(`TOOL_AUTORUN`) and never with `PUBLIC_RELEASE`.
 
 Every fix follows the same conventions:
 
@@ -45,7 +56,8 @@ Every fix follows the same conventions:
 The release source of a fix is its dev source's production code path with everything else
 removed. It is not re-measured in battle. Instead it is proven equivalent offline (section 4).
 The run-folder and log names still say `pathfix` because the path fix was the first user. They
-are proxy-level names.
+are proxy-level names and the defaults of the macros `LOG_FILE_NAME`, `LOG_RUN_ROOT`,
+`LOG_CAPTURE_ENV` and `LOG_BANNER` in `proxy/log.cpp`; a tool DLL overrides them.
 
 ## 3. Build system
 
@@ -91,6 +103,10 @@ patches only its own hooks, and writes no files.
   and anchor matching.
 - **Capture.** A dev build can record what its hooks see into run folders: one per P recording in
   play, or one per launch with `PATHFIX_CAPTURE=1`. `tools/runs/collect_runs.py` collects them into the fix's `data/`.
+- **Unattended runs.** `tools/autorun/autorun.py <replay> --capture` starts the game minimized
+  straight into a replay (`game_startup_mode replay` in `user.script.txt`), waits for the battle
+  to be decided and closes the game, so a capture needs no clicks
+  ([tools/autorun/README.md](tools/autorun/README.md)).
 
 ## 6. What lives where, and what is in git
 
