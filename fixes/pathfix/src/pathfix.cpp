@@ -1,3 +1,30 @@
+// pathfix.cpp -- dev build v42: variant G + park release, I toggles the path fix, P toggles a recording (2026-10-17)
+//
+// v42 (runs 20261017_104106 and 20261017_114804, a replay of four 200-man units sent through
+// a gatehouse to one spot with a shift-queued second order; fix off: all four go on; G: one to
+// three units stay for good):
+// - Park release (AdvanceHit). A unit finishes an order when every man is ready
+//   (FUN_103cbe40 over the soldier list, popped by the behaviour stack FUN_101b7e20). A man on
+//   a formation move counts as ready, a man on a go-to order only once he is in his slot. The
+//   laying call re-orders only men who are not ready; once cursor + D reaches the path end
+//   (FUN_10381c20) every man still out gets a formation move to the destination layout (the
+//   game's release). G's anchor put the leader's slot short of the end; he arrived, was never
+//   re-ordered, so the cursor (his projection) stopped and cursor + D stayed 0.7..4 m short of
+//   the end: no release, and go-to men who could not reach slots occupied by the other stacked
+//   units kept the unit from finishing, so the queued order never started. Now, after an anchor
+//   on this path, with the leader arrived (s+0x384 == 1 and s+0x308 == 1), no narrow run ahead
+//   and at most D + block depth + G_MARGIN_M of path left, the front goes G_PARK_PAST_M past
+//   the end and stays there (latched) until a new order or a new path. Rows reason "park",
+//   counters release_adv_park / release_adv_park_latched.
+// - Recording in play: P starts a recording into a new folder pathfix_runs\<date_time>\ (CSV
+//   files as v41's capture, named pathfix_capture_v42_*, and a pathfix_log.txt copy of the
+//   session log while it runs), P stops it; any number per session. Capture buffers are
+//   allocated at the first P. Tones: three rising notes = recording on, three falling = off,
+//   three long low tones = refused. O marks a moment while recording. PATHFIX_CAPTURE=1
+//   (the harness) keeps v41's capture mode unchanged.
+// - Log lines start with the local time [hh:mm:ss.mmm] (proxy/log.cpp).
+//
+// --- v41 header follows ---
 // pathfix.cpp -- main build v41: variant G only, I toggles the path fix, no recording (2026-10-16)
 //
 // v41 changes nothing in what variant G does (v40, below). It changes how the
@@ -75,7 +102,7 @@
 // field (3.14 s) is untouched, so every man's slot is far away and the pacing
 // law gives running speed through the choke; the formation re-forms beyond it
 // and then follows the leader as before. Open ground: no narrow node, nothing
-// changes. Rows: pathfix_capture_v41_release.csv (one per G advance call in
+// changes. Rows: pathfix_capture_v42_release.csv (one per G advance call in
 // the window); counters release_* in fix_totals.csv.
 //
 // --- v37 header follows ---
@@ -171,7 +198,7 @@
 //   than 1.3 * n / 3 of the queue, he moves to the ADJACENT lane with fewer
 //   men (never two lanes away: no crossing). w = w0 + k * 1.5 m, at most
 //   4.2 m, never below w0. Stuck release (FixStuckHold) -> w0.
-// Rows: pathfix_capture_v41_radius.csv (5 / s per man); counters radius_*.
+// Rows: pathfix_capture_v42_radius.csv (5 / s per man); counters radius_*.
 //
 // --- v33 header follows ---
 // hooks_v33.cpp -- variant L: look-ahead avoidance (Phase 20)
@@ -206,7 +233,7 @@
 //     oncoming blocker: pass clockwise (negative angle), both men alike;
 //   - wall memory: turned last tick but moved < 40 % of the turned D: that
 //     side is blocked for 1 s.
-// Rows: pathfix_capture_v41_avoid.csv (5 / s per man, window only);
+// Rows: pathfix_capture_v42_avoid.csv (5 / s per man, window only);
 // counters avoid_* in fix_totals.csv.
 //
 // --- v31 header follows ---
@@ -350,7 +377,7 @@
 //     test: the game's hard collision slides along walls (the offline model,
 //     sim/steer.py "H corner nowall", gave the same result as with one).
 //   Model: sim/run_gate2.py on the gatehouse ramp (docs/ghidra_analysis_v12.md
-//   section Q). Totals: steer_* rows in pathfix_capture_v41_fix_totals.csv.
+//   section Q). Totals: steer_* rows in pathfix_capture_v42_fix_totals.csv.
 //
 // --- v23 header follows ---
 // hooks_v23.cpp -- "lead the turn" corner rule (Phase 15)
@@ -475,7 +502,7 @@
 //   watchpoint key is gone; the watchpoint stays off). Disabling, and every
 //   refused key, sounds an alarm of three long low beeps.
 //   Capture: fix rows carry type, mA, mB, E+0x30, pA, pB, L; the first 64
-//   distinct apex portals are dumped raw (pathfix_capture_v41_fixraw.csv);
+//   distinct apex portals are dumped raw (pathfix_capture_v42_fixraw.csv);
 //   soldier samples are also taken from FUN_101bc880 and the fix hook, so a
 //   unit is sampled even when FUN_101a9750 is silent (R1 of run 22:19).
 //
@@ -485,7 +512,7 @@
 //
 // Phase 12 (docs/PHASE12_fix_plan.md). Built on hooks_v16.cpp; everything of
 // v16 is kept except the width override presets (removed; F6 now switches the
-// fix) and the file names (pathfix_capture_v41_*).
+// fix) and the file names (pathfix_capture_v42_*).
 //
 //   Fix: a mid-function patch at 0x103df6c0 (FUN_103df3f0, the instruction
 //   after CALL FUN_10394e80; stolen CMP byte ptr [EBX+0x471],1, 7 bytes).
@@ -505,7 +532,7 @@
 //   Live self-checks (frame: EAX == ESP+0x44 on every call; portal geometry
 //   and apex match on the first 200 apex calls) switch the fix off for the
 //   session when they fail ("FIX DISABLED" in the log).
-//   Capture: pathfix_capture_v41_fix.csv (one row per apex call, at most
+//   Capture: pathfix_capture_v42_fix.csv (one row per apex call, at most
 //   10 Hz per soldier, while the window is open), fix_totals.csv, FIXMODE
 //   rows in the events file, and soldiers.csv gains s_corridor = [R+0x0C]
 //   and s_radius = [R+0x50] (R = [s+0x3CC]).
@@ -832,6 +859,9 @@ static volatile DWORD g_captureStart = 0;
 static volatile DWORD g_captureEnd = 0;       // ms offset at which the window closes
 static volatile LONG  g_state = 0;            // 0 idle, 1 armed, 2 capturing, 3 done
 static bool g_captureOn = false;              // v41: PATHFIX_CAPTURE=1 at process start (LogCaptureMode); else no recording
+static volatile LONG g_recActive = 0;         // v42: a P recording is on (play mode, no PATHFIX_CAPTURE)
+static int  g_recNumber = 0;                  // v42: recordings started this session
+static bool g_recBuffers = false;             // v42: capture buffers allocated (at the first P, kept for the session)
 static volatile LONG  g_layoutBad = 0;        // stack layout self-check failed
 static volatile LONG  g_eventOverflow = 0;
 static volatile LONG  g_cursorOverflow = 0;
@@ -1027,7 +1057,7 @@ static volatile LONG g_watchStale = 0;       // traps on a previous address of a
 
 static uint32_t g_textStart = 0, g_textEnd = 0;   // absolute .text bounds
 
-// Slot (re)assignments, written to pathfix_capture_v41_slots.csv.
+// Slot (re)assignments, written to pathfix_capture_v42_slots.csv.
 enum { SLOT_ASSIGN = 1, SLOT_NODE_CHANGE = 2, SLOT_TAKEOVER = 3 };
 struct SlotEvent {
     volatile LONG valid;
@@ -1116,7 +1146,7 @@ static volatile LONG g_watchIdx = 0;
 static volatile LONG g_watchOverflow = 0;
 static volatile LONG g_watchForeign = 0;     // single-steps with a foreign Dr6 bit
 
-// Sweep statistics, written to pathfix_capture_v41_sweeps.csv.
+// Sweep statistics, written to pathfix_capture_v42_sweeps.csv.
 struct SweepStat {
     volatile LONG valid;       // v16: set last (incremental writer)
     uint32_t timestamp;
@@ -1645,11 +1675,12 @@ static inline uint32_t CtxDword(const uint8_t* ctx, int off) {
     return *(const uint32_t*)(ctx + off);
 }
 
-// Returns true while the window is open; opens it on the first hit.
+// Returns true while the window is open. Capture mode (PATHFIX_CAPTURE=1) opens it on the
+// first hit; in play (v42) only P opens it (RecStart) and P closes it again (RecStop).
 static bool WindowOpen(DWORD now, DWORD* elapsed) {
-    if (!g_captureOn) return false;   // v41: no recording; every fix path runs before this gate
+    if (!g_captureOn && !g_recActive) return false;   // every fix path runs before this gate
     LONG state = g_state;
-    if (state == 1) {
+    if (state == 1 && g_captureOn) {
         if (InterlockedCompareExchange(&g_state, 2, 1) == 1) {
             g_captureStart = now;
             g_captureEnd = CAPTURE_MS;
@@ -1659,7 +1690,7 @@ static bool WindowOpen(DWORD now, DWORD* elapsed) {
     if (state != 2) return false;
     *elapsed = now - g_captureStart;
     if (*elapsed > g_captureEnd) {
-        InterlockedExchange(&g_state, 3);
+        if (g_captureOn) InterlockedExchange(&g_state, 3);
         return false;
     }
     return true;
@@ -3568,6 +3599,7 @@ static void WaypointHit(const uint8_t* ctx) {
 // mode 1 / 2); 11 / 12 that many high tones, then a low one (lane mode
 // selected while the fix is off); 3 ALARM, three long low tones (the fix
 // disabled itself, or a key was refused because it is disabled).
+// v42: 5 recording ON, three rising notes (C5 E5 G5); 6 recording OFF, the same falling.
 struct ToneSeg { int hz; int ms; };   // hz 0 = silence
 static uint8_t* g_tones[13] = {};
 
@@ -3611,6 +3643,10 @@ static void FixTonesInit() {
     static const ToneSeg high1low[] = { { 880, 160 }, { 0, 100 }, { 330, 300 } };
     static const ToneSeg high2low[] = { { 880, 160 }, { 0, 100 }, { 880, 160 }, { 0, 100 }, { 330, 300 } };
     static const ToneSeg alarm[] = { { 200, 450 }, { 0, 150 }, { 200, 450 }, { 0, 150 }, { 200, 450 } };
+    static const ToneSeg recOn[] = { { 523, 90 }, { 0, 30 }, { 659, 90 }, { 0, 30 }, { 784, 160 } };
+    static const ToneSeg recOff[] = { { 784, 90 }, { 0, 30 }, { 659, 90 }, { 0, 30 }, { 523, 160 } };
+    g_tones[5] = MakeTone(recOn, 5);
+    g_tones[6] = MakeTone(recOff, 5);
     g_tones[0] = MakeTone(low, 1);
     g_tones[1] = MakeTone(high1, 1);
     g_tones[2] = MakeTone(high2, 3);
@@ -4278,6 +4314,7 @@ static uint32_t g_gCallSite = 0;            // rebased at install
 static const DWORD G_HOLD_AGE_MS = GT_MS(1000);     // v39: game ms without a laying call that end a hold
 static const float G_END_GAP_M = 2.0f;              // v40: the anchor stays this far before the path end (never "end reached")
 static const int   G_HOLDS = 64;                    // v39: controllers with a held anchor
+static const float G_PARK_PAST_M = 0.5f;            // v42: the park release lays the front this far past the path end
 
 static void FixInstallLog() {
     Log("  Fix:         corner waypoint fix at RVA 0x3DF6C0, OFF at launch (I cycles off / C / RC / G)");
@@ -4292,7 +4329,11 @@ static void FixInstallLog() {
         "without a laying call", (unsigned long)G_HOLD_AGE_MS);
     Log("               v40: the anchor is capped at path end - %.1f m (an anchor at the end gives every man a "
         "formation-move command instead of a go-to order, measured in run 183851)", G_END_GAP_M);
-    Log("  v37 capture: soldier rows add spd_max e+0x110, spd_cur +0x130, spd_tgt +0x150, spd_cmd +0x1AC, spd_mul +0x1BC, "
+    Log("               v42 park release: after an anchor on this path, with the leader arrived at his slot "
+        "(s+0x384 == 1, s+0x308 == 1), no narrow run ahead and at most D + block depth + %.1f m of path left, the front "
+        "goes %.1f m past the path end (the game's own release) and stays there until a new order or a new path",
+        G_MARGIN_M, G_PARK_PAST_M);
+    Log("  v37 capture:soldier rows add spd_max e+0x110, spd_cur +0x130, spd_tgt +0x150, spd_cmd +0x1AC, spd_mul +0x1BC, "
         "ord_spd +0x438, ord_t +0x43C, ord_mode +0x440, elapsed +0x46C, moving +0xF0, direct +0x198, f384, f308; "
         "order rows add leader_idx [ctrl+0x30], ready [ctrl+0x0C], speed_mode [ctrl+0x24]");
     Log("  Variant R:   mode 8 = radius lanes at the replan request (0x103DF4D1, request at hook ESP+0x%02X, "
@@ -4315,7 +4356,7 @@ static void FixInstallLog() {
         "Moussaid cost, |D| kept, side held %lu ms, oncoming -> clockwise, wall memory %lu ms",
         (unsigned long)AV_WP_MS, AV_STALL_MPS, AV_OTHER_UNITS ? "included" : "excluded", AV_H_M,
         (unsigned long)AV_HOLD_MS, (unsigned long)AV_WALL_MS);
-    Log("               unit snapshots every %.0f ms (%s); rows: pathfix_capture_v41_avoid.csv, %lu per s per man",
+    Log("               unit snapshots every %.0f ms (%s); rows: pathfix_capture_v42_avoid.csv, %lu per s per man",
         AV_SNAP_MS, g_avUnits ? "table allocated" : "TABLE MISSING, avoidance inert",
         (unsigned long)(1000 / AV_ROW_MS));
     Log("  Variants:    C mode 4 = lead the turn within %.0f m + no damping within %.0f m; D mode 5 = C + gather "
@@ -4330,7 +4371,7 @@ static void FixInstallLog() {
     Log("               self-checks: frame on every call; geometry (> %d permille) and apex match "
         "(> %d permille) on the first %d type-0 apex calls; ALARM (three long low tones) when disabled",
         FIX_GEO_PERMILLE, FIX_MATCH_PERMILLE, FIX_CHECK_CALLS);
-    Log("               rows: pathfix_capture_v41_fix.csv, at most %d per s per soldier, window only; "
+    Log("               rows: pathfix_capture_v42_fix.csv, at most %d per s per soldier, window only; "
         "%d rows max; raw dump of the first %d apex side objects (fixraw.csv)",
         (int)(1000 / FIX_ROW_MS), FIXREC_SIZE, FIXRAW_SIZE);
     Log("  Steering:    v25 on the integrator FUN_10367600 while the fix is on: corner men within %.0f m of the "
@@ -4596,32 +4637,38 @@ struct GPending {
     int32_t  nNodes, nRuns;
     float    runs[G_MAX_RUNS][2];   // [start, end) arc lengths of the narrow runs
     uint8_t  newOrder;          // v39: leader index ctrl+0x30 was 0 (first laying call after an order)
-    uint8_t  pad[3];
+    uint8_t  leaderParked;      // v42: the leader has arrived at his slot (s+0x384 == 1 and s+0x308 == 1)
+    uint8_t  pad[2];
 };
 static GPending g_gp[G_PENDING] = {};
 
-// v39: per-controller anchor hold
+// v39: per-controller anchor hold; v42: anchor applied on this path / park release latched
 struct GHold {
     volatile LONG ctrl;         // 0 = free
     DWORD    stamp;             // GameNow at the last advance call
     float    remFront;          // path end - block front laid last time (valid while active)
     float    remCursor;         // path end - cursor at the last call
     uint8_t  active;
-    uint8_t  pad[3];
+    uint8_t  anchored;          // v42: a release anchor was applied since the last order / new path
+    uint8_t  latched;           // v42: the park release fired; the front stays past the path end
+    uint8_t  pad;
 };
 static GHold g_gh[G_HOLDS] = {};
-static volatile LONG g_gAdvHeld = 0, g_gAdvHoldEnd = 0, g_gHoldReset = 0;
+static volatile LONG g_gAdvHeld = 0, g_gAdvHoldEnd = 0, g_gHoldReset = 0, g_gAdvPark = 0, g_gAdvParkLatched = 0;
 
 static GHold* GHoldFor(uint32_t ctrl) {
     for (int i = 0; i < G_HOLDS; i++)
         if ((uint32_t)g_gh[i].ctrl == ctrl) return &g_gh[i];
     for (int i = 0; i < G_HOLDS; i++)
-        if (InterlockedCompareExchange(&g_gh[i].ctrl, (LONG)ctrl, 0) == 0) { g_gh[i].stamp = 0; g_gh[i].active = 0; return &g_gh[i]; }
+        if (InterlockedCompareExchange(&g_gh[i].ctrl, (LONG)ctrl, 0) == 0) {
+            g_gh[i].stamp = 0; g_gh[i].active = 0; g_gh[i].anchored = 0; g_gh[i].latched = 0;
+            return &g_gh[i];
+        }
     GHold* oldest = &g_gh[0];
     for (int i = 1; i < G_HOLDS; i++)
         if (g_gh[i].stamp < oldest->stamp) oldest = &g_gh[i];
     InterlockedExchange(&oldest->ctrl, (LONG)ctrl);
-    oldest->stamp = 0; oldest->active = 0;
+    oldest->stamp = 0; oldest->active = 0; oldest->anchored = 0; oldest->latched = 0;
     return oldest;
 }
 
@@ -4630,7 +4677,7 @@ struct ReleaseRecord {
     uint32_t seq, timestamp, threadId, ctrl, unit, n, node;
     float    t, s0, pathEnd, wmax, depth, D, Dp, P, A, runStart, runEnd;
     int32_t  nNodes, nRuns, run;
-    uint8_t  applied, toEnd, reason, pad;   // reason 0 vanilla (P outside the runs), 1 moved past the run, 2 past the path end
+    uint8_t  applied, toEnd, reason, pad;   // reason 0 vanilla, 1 past_run, 2 end_gap, 3 hold, 4 park (v42)
 };
 static const int RELREC_SIZE = 16 * 1024;
 static ReleaseRecord* g_relRecs = nullptr;
@@ -4705,6 +4752,16 @@ static void GPlan(uint32_t ctrl, uint32_t unit, uint32_t n, DWORD now) {
         uint32_t li = 0xFFFFFFFF;
         ReadDword(ctrl + 0x30, &li);
         gp->newOrder = li == 0 ? 1 : 0;
+        // v42: has the leader (soldier li of the unit [ctrl+4]) arrived at his slot? The laying call
+        // re-orders only men who are not ready (FUN_103cbe40), so an arrived leader stays where he is
+        // and the unit cursor (his path projection) stops.
+        gp->leaderParked = 0;
+        uint32_t u = 0, cnt = 0, arr = 0, s = 0;
+        uint8_t b384 = 0, b308 = 0;
+        if (ReadDword(ctrl + 0x04, &u) && PtrPlausible(u) && ReadDword(u + 0x18, &cnt) && ReadDword(u + 0x1C, &arr) &&
+            li < cnt && cnt <= (uint32_t)MAX_SOLDIERS && PtrPlausible(arr) && ReadDword(arr + 4 * li, &s) &&
+            PtrPlausible(s) && ReadByte(s + 0x384, &b384) && ReadByte(s + 0x308, &b308))
+            gp->leaderParked = (b384 == 1 && b308 == 1) ? 1 : 0;
     }
     float files = floorf(wmax / G_FILE_M + 0.001f);
     if (files < 1.0f) files = 1.0f;
@@ -4793,13 +4850,16 @@ static void AdvanceHit(const uint8_t* ctx) {
         GHold* gh = GHoldFor(gp->ctrl);
         DWORD gnow = GameNow();
         float curRem = gp->pathEnd - gp->s0;
-        if (gp->newOrder || gh->stamp == 0 || gnow - gh->stamp > G_HOLD_AGE_MS || curRem > gh->remCursor + 1.0f) {
+        bool newPath = gp->newOrder || gh->stamp == 0 || curRem > gh->remCursor + 1.0f;
+        if (newPath) { gh->anchored = 0; gh->latched = 0; }   // v42
+        if (newPath || gnow - gh->stamp > G_HOLD_AGE_MS) {
             if (gh->active) InterlockedIncrement(&g_gHoldReset);
             gh->active = 0;
         }
         if (applied) {
             gh->remFront = gp->pathEnd - A;
             gh->active = 1;
+            gh->anchored = 1;
         } else if (gh->active) {
             float remP = gp->pathEnd - P;
             if (remP > gh->remFront + 0.05f) {
@@ -4814,6 +4874,29 @@ static void AdvanceHit(const uint8_t* ctx) {
                 gh->active = 0;
                 InterlockedIncrement(&g_gAdvHoldEnd);
             }
+        }
+        // v42 park release (run 20261017_114804): the anchor put the leader's slot short of the
+        // path end, he arrived there and, being ready, is never re-ordered, so the cursor (his
+        // projection) stops and cursor + D never reaches the end. The game's own release (front
+        // at the end: every man still out of his slot gets a formation move to the destination
+        // layout) then never comes, and men on go-to orders that cannot reach their slots (units
+        // stacked on one spot) keep the unit from ever finishing its order. When the leader is
+        // parked behind such an anchor, no narrow run is ahead and the rest of the path is no
+        // longer than D + block depth + margin (the most the anchor moved him ahead of the game's
+        // own creep), the front goes past the end; it stays there (latched) until a new order or
+        // a new path, as the game's front does once it reached the end.
+        bool runAhead = false;
+        for (int i = 0; i < gp->nRuns; i++)
+            if (gp->runs[i][1] > gp->s0 + 0.01f) { runAhead = true; break; }
+        if (!runAhead && !gp->newOrder && gp->s0 + Dp < gp->pathEnd &&
+            (gh->latched || (gh->anchored && gp->leaderParked && curRem <= D + gp->depth + G_MARGIN_M))) {
+            Dp = curRem + G_PARK_PAST_M;
+            A = gp->pathEnd + G_PARK_PAST_M;
+            *dist = Dp;
+            applied = 3; toEnd = 1; reason = 4;
+            InterlockedIncrement(gh->latched ? &g_gAdvParkLatched : &g_gAdvPark);
+            gh->latched = 1;
+            gh->active = 0;
         }
         gh->remCursor = curRem;
         gh->stamp = gnow ? gnow : 1;
@@ -5014,57 +5097,57 @@ static void SummaryClose(FILE* f, const char* tmpPath, const char* finalPath) {
         Log("ERROR: cannot replace %s (error %lu)", finalPath, GetLastError());
 }
 
-static OutFile g_outEvents = { "pathfix_capture_v41_events.csv",
+static OutFile g_outEvents = { "pathfix_capture_v42_events.csv",
     "seq,timestamp_ms,thread_id,hook_id,hook_name,ecx,arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,"
     "arg4_as_float,ecx_60,ecx_60_as_float,ecx_60_ok,ret_abs,ret_rva,hit_no,record_reason,marker_no\n" };
-static OutFile g_outCursor = { "pathfix_capture_v41_cursor.csv",
+static OutFile g_outCursor = { "pathfix_capture_v42_cursor.csv",
     "seq,timestamp_ms,thread_id,this_ptr,arg1,ret_abs,ret_rva,call_no,reason,p_ptr,cursor_addr,"
     "node,progress,progress_hex,flag_74,node_next,read_flags,"
     "node_dump_len,node_dump_hex,p_dump_len,p_dump_hex\n" };
-static OutFile g_outWatch = { "pathfix_capture_v41_watch.csv",
+static OutFile g_outWatch = { "pathfix_capture_v42_watch.csv",
     "seq,timestamp_ms,thread_id,hook_id,slot,slot_gen,unit_this,watch_addr,watch_base,watch_offset,"
     "eip,eip_rva,eip_in_module,old_value,new_value,old_as_float,new_as_float,value_changed,is_read,"
     "eax,ebx,ecx,edx,esi,edi,ebp,esp,"
     "stack_rva_0,stack_rva_1,stack_rva_2,stack_rva_3,stack_rva_4,stack_rva_5,"
     "stack_rva_6,stack_rva_7,hits_this_eip_total,record_reason\n" };
-static OutFile g_outSlots = { "pathfix_capture_v41_slots.csv",
+static OutFile g_outSlots = { "pathfix_capture_v42_slots.csv",
     "seq,timestamp_ms,thread_id,slot,kind,unit_this,prev_this,p_ptr,old_addr,new_addr,new_node,value_hex,value_as_float\n" };
-static OutFile g_outSweeps = { "pathfix_capture_v41_sweeps.csv",
+static OutFile g_outSweeps = { "pathfix_capture_v42_sweeps.csv",
     "timestamp_ms,threads,armed,changed,failed,slot_mask,disarm\n" };
-static OutFile g_outBuilds = { "pathfix_capture_v41_builds.csv",
+static OutFile g_outBuilds = { "pathfix_capture_v42_builds.csv",
     "seq,timestamp_ms,thread_id,ret_abs,ret_rva,ecx,p_ptr,head,arg3,arg4,nodes,stop_reason,"
     "ms_since_ctor,overridden,hit_no,record_reason\n" };
-static OutFile g_outNodes = { "pathfix_capture_v41_build_nodes.csv",
+static OutFile g_outNodes = { "pathfix_capture_v42_build_nodes.csv",
     "build_seq,index,node,next,w74,w78,w74_hex,w78_hex,overridden,new74,new78,"
     "side,clearance,base0_x,base0_z,base1_x,base1_z,follow0_x,follow0_z,follow1_x,follow1_z,"
     "dump_len,dump_hex\n" };
-static OutFile g_outOrders = { "pathfix_capture_v41_orders.csv",
+static OutFile g_outOrders = { "pathfix_capture_v42_orders.csv",
     "seq,timestamp_ms,thread_id,ctrl,unit,soldier_count,cursor_node,cursor_t,ret_abs,ret_rva,listed,leader_idx,ready,speed_mode,soldiers\n" };
-static OutFile g_outGotos = { "pathfix_capture_v41_gotos.csv",
+static OutFile g_outGotos = { "pathfix_capture_v42_gotos.csv",
     "seq,timestamp_ms,thread_id,kind,soldier,ret_abs,ret_rva,order_ptr,order_len,"
     "x,y,z,region,aux,heading,d18,d1c,f20,f24,b28,b29,order_hex\n" };
-static OutFile g_outSoldiers = { "pathfix_capture_v41_soldiers.csv",
+static OutFile g_outSoldiers = { "pathfix_capture_v42_soldiers.csv",
     "seq,timestamp_ms,thread_id,sample_no,reason,ctrl,unit,soldier_count,index,soldier,ent,ent_kind,flags,"
     "pos_x,pos_y,pos_z,heading,loc_x,loc_z,"
     "s_state,s_path,s_dest_x,s_dest_z,s_wp_x,s_wp_z,"
     "e_state,e_path,e_dest_x,e_dest_z,e_wp_x,e_wp_z,s_corridor,s_radius,"
     "spd_max,spd_cur,spd_tgt,spd_cmd,spd_mul,ord_spd,ord_t,ord_mode,elapsed,moving,direct,f384,f308\n" };
 
-static OutFile g_outFix = { "pathfix_capture_v41_fix.csv",
+static OutFile g_outFix = { "pathfix_capture_v42_fix.csv",
     "seq,timestamp_ms,thread_id,soldier,unit,mode,status,side,clamped,portal,type,edge,twin,len,r,e30,"
     "a_x,a_z,b_x,b_z,ma_x,ma_z,mb_x,mb_z,pa_x,pa_z,pb_x,pb_z,lane,"
     "before_x,before_y,before_z,after_x,after_z,t,t_i,t_min,t_max,scale,"
     "pos_x,pos_z,dest_x,dest_z,batch\n" };
-static OutFile g_outRadius = { "pathfix_capture_v41_radius.csv",
+static OutFile g_outRadius = { "pathfix_capture_v42_radius.csv",
     "seq,timestamp_ms,thread_id,soldier,unit,lane,prev_lane,reason,n,cnt0,cnt1,cnt2,q,w0,w,vertex_x,vertex_z,pos_x,pos_z,"
     "key,candidates\n" };
-static OutFile g_outAvoid = { "pathfix_capture_v41_avoid.csv",
+static OutFile g_outAvoid = { "pathfix_capture_v42_avoid.csv",
     "seq,timestamp_ms,thread_id,soldier,unit,kind,deg,side,hold,wall,n_stalled,n_mover,n_ignored,n_other,n_beyond,"
     "blocker,pos_x,pos_z,din_x,din_z,dout_x,dout_z,f0,fbest,horizon,speed,blk_vx,blk_vz\n" };
-static OutFile g_outRelease = { "pathfix_capture_v41_release.csv",
+static OutFile g_outRelease = { "pathfix_capture_v42_release.csv",
     "seq,timestamp_ms,thread_id,ctrl,unit,n,node,t,cursor_arc,path_end,nodes,max_width,narrow_runs,run,run_start,run_end,"
     "depth,D,D_new,P,A,applied,to_end,reason\n" };
-static OutFile g_outFixRaw = { "pathfix_capture_v41_fixraw.csv",
+static OutFile g_outFixRaw = { "pathfix_capture_v42_fixraw.csv",
     "seq,timestamp_ms,portal,edge,twin,portal_len,portal_hex,edge_len,edge_hex,twin_len,twin_hex\n" };
 
 static void RowFix(FILE* f, const FixRecord& r) {
@@ -5090,11 +5173,11 @@ static void RowRadius(FILE* f, const RadiusRecord& r) {
 }
 
 static void RowRelease(FILE* f, const ReleaseRecord& r) {
-    static const char* const reason[4] = { "vanilla", "past_run", "end_gap", "hold" };
+    static const char* const reason[5] = { "vanilla", "past_run", "end_gap", "hold", "park" };
     fprintf(f, "%u,%u,%u,0x%08X,0x%08X,%u,0x%08X,%.4f,%.2f,%.2f,%d,%.2f,%d,%d,%.2f,%.2f,%.2f,%.3f,%.3f,%.2f,%.2f,%u,%u,%s\n",
         r.seq, r.timestamp, r.threadId, r.ctrl, r.unit, r.n, r.node, r.t, r.s0, r.pathEnd, r.nNodes, r.wmax, r.nRuns,
         r.run, r.runStart, r.runEnd, r.depth, r.D, r.Dp, r.P, r.A, (unsigned)r.applied, (unsigned)r.toEnd,
-        r.reason < 4 ? reason[r.reason] : "?");
+        r.reason < 5 ? reason[r.reason] : "?");
 }
 
 static void RowAvoid(FILE* f, const AvoidRecord& r) {
@@ -5118,7 +5201,7 @@ static void RowFixRaw(FILE* f, const FixRawRecord& r) {
 
 static void WriteFixTotals(bool logIt) {
     char tmp[MAX_PATH + 8], fin[MAX_PATH];
-    FILE* f = SummaryOpen("pathfix_capture_v41_fix_totals.csv", tmp, fin);
+    FILE* f = SummaryOpen("pathfix_capture_v42_fix_totals.csv", tmp, fin);
     if (f) fprintf(f, "counter,value\n");
     struct { const char* name; LONG v; } rows[] = {
         { "handler_calls", g_fixCalls }, { "goal_returns", g_fixGoal }, { "apex_returns", g_fixApex },
@@ -5181,7 +5264,8 @@ static void WriteFixTotals(bool logIt) {
         { "release_adv_mismatch", g_gAdvMismatch }, { "release_adv_vanilla", g_gAdvVanilla },
         { "release_adv_applied", g_gAdvApplied }, { "release_adv_to_end", g_gAdvToEnd },
         { "release_adv_not_farther", g_gAdvNotFarther }, { "release_adv_held", g_gAdvHeld },
-        { "release_adv_hold_end", g_gAdvHoldEnd }, { "release_hold_reset", g_gHoldReset }, { "release_rows", g_relRecIdx },
+        { "release_adv_hold_end", g_gAdvHoldEnd }, { "release_hold_reset", g_gHoldReset },
+        { "release_adv_park", g_gAdvPark }, { "release_adv_park_latched", g_gAdvParkLatched }, { "release_rows", g_relRecIdx },
         { "release_rows_overflow", g_relRecOverflow },
     };
     for (size_t i = 0; i < sizeof(rows) / sizeof(rows[0]); i++)
@@ -5216,12 +5300,12 @@ static void WriteFixTotals(bool logIt) {
         Log("Release (G): %ld plans (%ld bad cursor, %ld walk failures, %ld no wide node, %ld without / %ld with narrow runs, "
             "%.1f nodes per plan); advance hook %ld calls, %ld other call sites, %ld no plan, %ld mismatch, "
             "%ld vanilla, %ld moved past the run (%ld to the path end), %ld not farther, %ld held at the anchor "
-            "(%ld holds ended, %ld reset); %ld rows",
+            "(%ld holds ended, %ld reset), %ld park releases (+%ld latched calls); %ld rows",
             (long)g_gPlanCalls, (long)g_gPlanBadCursor, (long)g_gPlanWalkFail, (long)g_gPlanNoWide, (long)g_gPlanNoRuns,
             (long)g_gPlanWithRuns, g_gPlanCalls ? (double)g_gPlanNodesSum / (double)g_gPlanCalls : 0.0,
             (long)g_gAdvCalls, (long)g_gAdvOtherSite, (long)g_gAdvNoPlan, (long)g_gAdvMismatch, (long)g_gAdvVanilla,
             (long)g_gAdvApplied, (long)g_gAdvToEnd, (long)g_gAdvNotFarther, (long)g_gAdvHeld, (long)g_gAdvHoldEnd,
-            (long)g_gHoldReset, (long)g_relRecIdx);
+            (long)g_gHoldReset, (long)g_gAdvPark, (long)g_gAdvParkLatched, (long)g_relRecIdx);
         Log("Fix totals: %ld handler calls, %ld goal, %ld apex; adjusted %ld; mode now %ld%s",
             (long)g_fixCalls, (long)g_fixGoal, (long)g_fixApex, (long)g_fixStatus[FS_ADJUSTED],
             (long)g_fixMode, g_fixDisabled ? " (DISABLED)" : "");
@@ -5421,7 +5505,7 @@ static void RowSample(FILE* f, const SampleRecord& s) {
 
 static void WriteTotals(bool logIt) {
     char tmp[MAX_PATH + 8], fin[MAX_PATH];
-    FILE* f = SummaryOpen("pathfix_capture_v41_totals.csv", tmp, fin);
+    FILE* f = SummaryOpen("pathfix_capture_v42_totals.csv", tmp, fin);
     if (logIt) Log("Per-hook totals (hits since install / hits in window / records written):");
     if (f) fprintf(f, "hook_id,hook_name,role,rva,total_hits,window_hits,recorded\n");
     for (int h = 0; h < HOOK_COUNT; h++) {
@@ -5437,7 +5521,7 @@ static void WriteTotals(bool logIt) {
 
 static void WriteWatchTotals(bool logIt) {
     char tmp[MAX_PATH + 8], fin[MAX_PATH];
-    FILE* f = SummaryOpen("pathfix_capture_v41_watch_totals.csv", tmp, fin);
+    FILE* f = SummaryOpen("pathfix_capture_v42_watch_totals.csv", tmp, fin);
     if (logIt) Log("Watch totals per slot and EIP (EIP is the instruction after the access):");
     if (f) fprintf(f, "slot,watch_addr_last,eip,eip_rva,eip_in_module,total_hits,recorded,value_changes,reads\n");
     for (int sl = 0; sl < WATCH_SLOTS; sl++) {
@@ -5460,7 +5544,7 @@ static void WriteWatchTotals(bool logIt) {
 
 static void WriteUnits() {
     char tmp[MAX_PATH + 8], fin[MAX_PATH];
-    FILE* f = SummaryOpen("pathfix_capture_v41_units.csv", tmp, fin);
+    FILE* f = SummaryOpen("pathfix_capture_v42_units.csv", tmp, fin);
     if (!f) return;
     fprintf(f, "unit,first_ctrl,first_soldier,first_ent,ent_kind,first_count\n");
     int n = g_unitsUsed;
@@ -5534,7 +5618,7 @@ static void WriteFaults() {
     LONG total = g_faultCount;
     if (total == 0) return;
     char tmp[MAX_PATH + 8], fin[MAX_PATH];
-    FILE* f = SummaryOpen("pathfix_capture_v41_faults.csv", tmp, fin);
+    FILE* f = SummaryOpen("pathfix_capture_v42_faults.csv", tmp, fin);
     if (!f) return;
     fprintf(f, "n,timestamp_ms,thread_id,code,eip,eip_rva,av_kind,av_addr,eax,ebx,ecx,edx,esi,edi,ebp,esp,"
                "stack_rva_0,stack_rva_1,stack_rva_2,stack_rva_3,stack_rva_4,stack_rva_5,stack_rva_6,stack_rva_7\n");
@@ -5761,11 +5845,7 @@ static void AnnounceUnits() {
     }
 }
 
-static void WriteAllOnce() {
-    if (InterlockedExchange(&g_written, 1) != 0) return;
-    InterlockedExchange(&g_state, 3);
-    WatchShutdown();   // disarm every thread before the buffers are read
-    Sleep(200);        // let a handler that is mid-record finish it
+static void CaptureSummaryLog() {
     Log("Capture complete: %d event records, %d cursor records, %d node dumps, %d markers",
         (int)min(g_eventIdx, (LONG)EVENT_SIZE), (int)min(g_cursorIdx, (LONG)CURSOR_SIZE),
         (int)min(g_dumpIdx, (LONG)DUMP_SIZE), (int)g_markerCount);
@@ -5790,6 +5870,14 @@ static void WriteAllOnce() {
     if (g_fixRecOverflow) Log("WARNING: fix row buffer full, later fix rows dropped (the fix kept working)");
     if (g_faultCount) Log("First-chance faults inside empire.retail.dll: %ld (last %d in faults.csv)",
                           (long)g_faultCount, FAULT_RING);
+}
+
+static void WriteAllOnce() {
+    if (InterlockedExchange(&g_written, 1) != 0) return;
+    InterlockedExchange(&g_state, 3);
+    WatchShutdown();   // disarm every thread before the buffers are read
+    Sleep(200);        // let a handler that is mid-record finish it
+    CaptureSummaryLog();
     if (!g_events || !g_cursor) {
         Log("No buffers, nothing to write.");
         return;
@@ -5840,6 +5928,113 @@ static void AddMarker(DWORD elapsed) {
     Log("O: marker %d at %.1f s", (int)no, elapsed / 1000.0);
 }
 
+// ---------------------------------------------------------------------------
+// v42 recording in play (no PATHFIX_CAPTURE): P starts a recording into a new run folder, P
+// stops it; any number of recordings per session. The record writers stay behind WindowOpen,
+// which is open only between RecStart and RecStop. Each recording starts from empty buffers
+// (timestamp_ms 0 = the P press, logged with the local time in the folder's pathfix_log.txt).
+// ---------------------------------------------------------------------------
+static bool AllocCaptureBuffers();   // with Pathfix_Install, below
+
+template <typename R>
+static void ClearUsed(R* buf, volatile LONG* idx, LONG size) {
+    LONG n = *idx;
+    if (n > size) n = size;
+    if (buf && n > 0) memset((void*)buf, 0, sizeof(R) * (size_t)n);
+    InterlockedExchange(idx, 0);
+}
+
+static void OutReset(OutFile& o) {
+    if (o.f) { fclose(o.f); o.f = nullptr; }
+    o.next = 0; o.written = 0; o.lost = 0; o.failed = false; o.closed = false;
+}
+
+// After RecStop has flushed and closed everything: empty buffers, files and per-recording
+// counters for the next recording. Session counters (fix totals, hits since install) stay.
+static void ResetCaptureState() {
+    ClearUsed(g_events, &g_eventIdx, (LONG)EVENT_SIZE);
+    ClearUsed(g_cursor, &g_cursorIdx, (LONG)CURSOR_SIZE);
+    ClearUsed(g_dumps, &g_dumpIdx, (LONG)DUMP_SIZE);
+    ClearUsed(g_builds, &g_buildIdx, (LONG)BUILD_SIZE);
+    ClearUsed(g_nodeRows, &g_nodeRowIdx, (LONG)NODEROW_SIZE);
+    ClearUsed(g_orders, &g_orderIdx, (LONG)ORDERREC_SIZE);
+    ClearUsed(g_soldierPool, &g_poolIdx, (LONG)POOL_SIZE);
+    ClearUsed(g_gotos, &g_gotoIdx, (LONG)GOTO_SIZE);
+    ClearUsed(g_samples, &g_sampleIdx, (LONG)SAMPLE_SIZE);
+    ClearUsed(g_srows, &g_srowIdx, (LONG)SROW_SIZE);
+    ClearUsed(g_fixRecs, &g_fixRecIdx, (LONG)FIXREC_SIZE);
+    ClearUsed(g_fixRaw, &g_fixRawIdx, (LONG)FIXRAW_SIZE);
+    ClearUsed(g_avRecs, &g_avRecIdx, (LONG)AVREC_SIZE);
+    ClearUsed(g_rqRecs, &g_rqRecIdx, (LONG)RQREC_SIZE);
+    ClearUsed(g_relRecs, &g_relRecIdx, (LONG)RELREC_SIZE);
+    ClearUsed(g_watch, &g_watchIdx, (LONG)WATCH_SIZE);
+    ClearUsed(g_slotEv, &g_slotEvIdx, (LONG)SLOTEV_SIZE);
+    InterlockedExchange(&g_sweepIdx, 0);
+    volatile LONG* flags[] = { &g_eventOverflow, &g_cursorOverflow, &g_buildOverflow, &g_nodeRowOverflow,
+        &g_orderOverflow, &g_poolOverflow, &g_gotoOverflow, &g_sampleOverflow, &g_srowOverflow, &g_fixRecOverflow,
+        &g_avRecOverflow, &g_rqRecOverflow, &g_relRecOverflow, &g_watchOverflow, &g_slotEvOverflow,
+        &g_seq, &g_markerCount, &g_entSelf, &g_entOther, &g_entBad };
+    for (size_t i = 0; i < sizeof(flags) / sizeof(flags[0]); i++) InterlockedExchange(flags[i], 0);
+    OutFile* files[] = { &g_outEvents, &g_outCursor, &g_outWatch, &g_outSlots, &g_outSweeps, &g_outBuilds,
+        &g_outNodes, &g_outOrders, &g_outGotos, &g_outSoldiers, &g_outFix, &g_outRadius, &g_outAvoid,
+        &g_outRelease, &g_outFixRaw };
+    for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); i++) OutReset(*files[i]);
+    for (int i = 0; i < THIS_TABLE_SIZE; i++) InterlockedExchange(&g_this[i].announced, 0);
+    for (int i = 0; i < UNIT_TABLE; i++) InterlockedExchange(&g_units[i].announced, 0);
+    for (int h = 0; h < HOOK_COUNT; h++) {
+        SpinLock(&g_rate[h].lock);
+        g_rate[h].windowHits = 0;
+        g_rate[h].recorded = 0;
+        SpinUnlock(&g_rate[h].lock);
+    }
+}
+
+static void RecStart() {
+    if (g_recActive) return;
+    if (!AllocCaptureBuffers()) {
+        Log("P refused: cannot allocate the recording buffers; nothing is recorded (ALARM)");
+        FixBeep(3);
+        return;
+    }
+    char folder[MAX_PATH];
+    if (!LogRecordingStart(g_recNumber + 1, folder, sizeof(folder))) {
+        Log("P refused: cannot create a recording folder in pathfix_runs (ALARM)");
+        FixBeep(3);
+        return;
+    }
+    g_recNumber++;
+    Log("PATHFIX BUILD v42 recording %d, build id %s %s", g_recNumber, __DATE__, __TIME__);
+    Log("P: recording %d ON (path fix %s) -> %s", g_recNumber,
+        g_fixMode == FIX_V38_G ? "ON, variant G" : g_fixMode == FIX_OFF ? "OFF" : kFixModeText[g_fixMode], folder);
+    g_captureStart = GetTickCount();
+    g_captureEnd = 0xFFFFFFFFu;
+    InterlockedExchange(&g_recActive, 1);
+    InterlockedExchange(&g_state, 2);
+    AddControlEvent(HOOK_FIXMODE, (uint16_t)g_fixMode, (uint32_t)g_fixVariant, 0, 0);   // the fix mode at t = 0
+    FixBeep(5);
+}
+
+// atExit: called from Pathfix_Remove (process detach): no tone, short grace period.
+static void RecStop(bool atExit) {
+    if (InterlockedCompareExchange(&g_recActive, 0, 1) != 1) return;
+    InterlockedExchange(&g_state, 1);      // writers see the window closed
+    DWORD elapsed = GetTickCount() - g_captureStart;
+    Sleep(atExit ? 50 : 200);              // let a handler that is mid-record finish it
+    Log("P: recording %d OFF after %.1f s%s", g_recNumber, elapsed / 1000.0, atExit ? " (game closed)" : "");
+    CaptureSummaryLog();
+    AnnounceNewCursors();
+    AnnounceUnits();
+    if (FlushAll(true, 3000)) {
+        if (TryEnterCriticalSection(&g_flushCS)) { CloseAllOutputs(); LeaveCriticalSection(&g_flushCS); }
+    } else {
+        Log("ERROR: flush lock busy for 3 s; the files hold the last periodic flush");
+    }
+    Log("RECORDING STOPPED: recording %d, files in %s", g_recNumber, LogRunDir());
+    LogRecordingStop();
+    ResetCaptureState();
+    if (!atExit) FixBeep(6);
+}
+
 // Key functions (v19). Real keys: I = fix on / off, O = marker, P = finish;
 // the lane mode and the window extension have no real key. Offline harness
 // only (tools/hooktest19.cpp): functions pressed through this export instead
@@ -5875,7 +6070,58 @@ static bool KeyEdge(int fn, bool* down) {
     return edge;
 }
 
+// v42 play (no PATHFIX_CAPTURE): I fix on / off, P recording on / off, O marker while recording.
+static void PlayLoop() {
+    bool iDown = false, lDown = false, pDown = false, oDown = false;
+    DWORD lastUef = 0, lastFlush = 0, lastLog = 0, lastTotals = GetTickCount();
+    LONG lastCalls = g_fixCalls;
+    while (!g_quit) {
+        Sleep(50);
+        if (g_layoutBad) {
+            RecStop(false);
+            Log("ERROR: stack layout self-check failed (saved ESP != address of return slot).");
+            Log("       The fix does not run and nothing more is recorded. Regenerate the stack offset headers");
+            Log("       with tools/re/stack_calc.py.");
+            return;
+        }
+        DWORD tick = GetTickCount();
+        if (tick - lastUef >= 1000) { lastUef = tick; AssertCrashFilter(); }
+        DWORD elapsed = g_recActive ? tick - g_captureStart : 0;
+        if (KeyEdge(KEY_FIX, &iDown)) FixKeyF6(elapsed);
+        FixReportDisabled(elapsed);
+        if (KeyEdge(KEY_LANE, &lDown)) FixKeyF7(elapsed);   // harness only
+        if (KeyEdge(KEY_FINISH, &pDown)) {
+            if (g_recActive) RecStop(false);
+            else { RecStart(); lastFlush = 0; lastLog = 0; }
+            continue;
+        }
+        bool oEdge = KeyEdge(KEY_MARK, &oDown);
+        if (!g_recActive) {
+            if (oEdge) Log("O ignored: not recording (P starts a recording)");
+            if (tick - lastTotals >= 60000) {
+                lastTotals = tick;
+                if (g_fixCalls != lastCalls) { lastCalls = g_fixCalls; WriteFixTotals(true); }
+            }
+            continue;
+        }
+        AnnounceNewCursors();
+        AnnounceUnits();
+        if (oEdge) AddMarker(elapsed);
+        if (elapsed - lastFlush >= FLUSH_MS) {
+            lastFlush = elapsed;
+            FlushAll(false, 1000);
+        }
+        if (elapsed - lastLog >= 10000) {
+            lastLog = elapsed;
+            Log("Recording %d... %d s, %d orders, %d go-to, %d samples / %d soldier rows, %d fix rows, %d release rows, "
+                "fix mode %d%s", g_recNumber, (int)(elapsed / 1000), (int)g_orderIdx, (int)g_gotoIdx, (int)g_sampleIdx,
+                (int)g_srowIdx, (int)g_fixRecIdx, (int)g_relRecIdx, (int)g_fixMode, g_fixDisabled ? " DISABLED" : "");
+        }
+    }
+}
+
 static DWORD WINAPI DumpThread(LPVOID) {
+    if (!g_captureOn) { PlayLoop(); return 0; }   // v42
     bool announced = false;
     bool f6Down = false, f7Down = false, f8Down = false, f9Down = false;
     DWORD lastLog = 0, lastFlush = 0, lastUef = 0;
@@ -5984,14 +6230,54 @@ static T* AllocRecords(int n) {
     return (T*)VirtualAlloc(nullptr, sizeof(T) * (size_t)n, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 }
 
+// Capture buffers: at install in capture mode, at the first P in play (v42). Kept for the session.
+static bool AllocCaptureBuffers() {
+    if (g_recBuffers) return true;
+    if (!g_events) g_events = AllocRecords<EventRecord>(EVENT_SIZE);
+    if (!g_cursor) g_cursor = AllocRecords<CursorRecord>(CURSOR_SIZE);
+    if (!g_dumps) g_dumps = AllocRecords<DumpSlot>(DUMP_SIZE);
+    if (!g_builds) g_builds = AllocRecords<BuildRecord>(BUILD_SIZE);
+    if (!g_nodeRows) g_nodeRows = AllocRecords<NodeRow>(NODEROW_SIZE);
+    if (!g_orders) g_orders = AllocRecords<OrderRecord>(ORDERREC_SIZE);
+    if (!g_soldierPool) g_soldierPool = AllocRecords<uint32_t>(POOL_SIZE);
+    if (!g_gotos) g_gotos = AllocRecords<GotoRecord>(GOTO_SIZE);
+    if (!g_samples) g_samples = AllocRecords<SampleRecord>(SAMPLE_SIZE);
+    if (!g_srows) g_srows = AllocRecords<SoldierRow>(SROW_SIZE);
+    if (!g_fixRecs) g_fixRecs = AllocRecords<FixRecord>(FIXREC_SIZE);
+    if (!g_avRecs) g_avRecs = AllocRecords<AvoidRecord>(AVREC_SIZE);
+    if (!g_rqRecs) g_rqRecs = AllocRecords<RadiusRecord>(RQREC_SIZE);
+    if (!g_relRecs) g_relRecs = AllocRecords<ReleaseRecord>(RELREC_SIZE);   // v38; null = no release rows (G still acts)
+    if (!g_events || !g_cursor || !g_dumps || !g_builds || !g_nodeRows ||
+        !g_orders || !g_soldierPool || !g_gotos || !g_samples || !g_srows || !g_fixRecs)
+        return false;
+    g_recBuffers = true;
+    size_t total = sizeof(EventRecord) * EVENT_SIZE + sizeof(CursorRecord) * CURSOR_SIZE +
+                   sizeof(DumpSlot) * DUMP_SIZE + sizeof(BuildRecord) * BUILD_SIZE +
+                   sizeof(NodeRow) * NODEROW_SIZE + sizeof(OrderRecord) * ORDERREC_SIZE +
+                   sizeof(uint32_t) * POOL_SIZE + sizeof(GotoRecord) * GOTO_SIZE +
+                   sizeof(SampleRecord) * SAMPLE_SIZE + sizeof(SoldierRow) * SROW_SIZE +
+                   sizeof(FixRecord) * FIXREC_SIZE + sizeof(FixSoldier) * FIX_SOLDIER_TABLE;
+    Log("  Buffers:     %d events, %d cursor, %d node dumps, %d builds, %d node rows", EVENT_SIZE,
+        CURSOR_SIZE, DUMP_SIZE, BUILD_SIZE, NODEROW_SIZE);
+    Log("               %d orders, %d go-to, %d samples, %d soldier rows (%d MB total before the watch)",
+        ORDERREC_SIZE, GOTO_SIZE, SAMPLE_SIZE, SROW_SIZE, (int)(total / 1024 / 1024));
+    Log("  Rate limit:  group 1 and builder: first %d hits after %d ms silence, else %d records/s per hook",
+        BURST_HITS, (int)SILENCE_MS, PER_SECOND);
+    Log("  Soldiers:    per unit every %d ms while any soldier moves, else every %d ms; up to %d soldiers",
+        (int)SAMPLE_MOVING_MS, (int)SAMPLE_IDLE_MS, MAX_SOLDIERS);
+    Log("  Output:      record files appended every %d s; summaries rewritten (tmp + rename)", (int)(FLUSH_MS / 1000));
+    return true;
+}
+
 void Pathfix_Install() {   // registered in proxy/fixes.cpp (was InstallHooks in hooks_v40.cpp)
     Log("------------------------------------------------------------");
     g_captureOn = LogCaptureMode();
-    Log("PATHFIX BUILD v41 (variant G = release beyond the choke + radius lanes + lead the turn + no crowd damping; "
-        "I toggles the path fix on / off, off at launch), build id %s %s", __DATE__, __TIME__);
+    Log("PATHFIX BUILD v42 (variant G = release beyond the choke + park release + radius lanes + lead the turn + "
+        "no crowd damping; I toggles the path fix on / off, off at launch; P toggles a recording), build id %s %s",
+        __DATE__, __TIME__);
     Log("------------------------------------------------------------");
     Log("  Capture:     %s", g_captureOn ? "ON (PATHFIX_CAPTURE=1): v40 capture, run folder, O marker, P finish"
-                                         : "OFF: nothing is recorded; O and P are not read");
+                                         : "OFF at launch: P starts / stops a recording (v42)");
     Log("  Folder:      %s", LogRunDir());
     SYSTEM_INFO si;
     GetSystemInfo(&si);
@@ -6052,44 +6338,14 @@ void Pathfix_Install() {   // registered in proxy/fixes.cpp (was InstallHooks in
         return;
     }
     if (g_captureOn) {
-    g_events = AllocRecords<EventRecord>(EVENT_SIZE);
-    g_cursor = AllocRecords<CursorRecord>(CURSOR_SIZE);
-    g_dumps = AllocRecords<DumpSlot>(DUMP_SIZE);
-    g_builds = AllocRecords<BuildRecord>(BUILD_SIZE);
-    g_nodeRows = AllocRecords<NodeRow>(NODEROW_SIZE);
-    g_orders = AllocRecords<OrderRecord>(ORDERREC_SIZE);
-    g_soldierPool = AllocRecords<uint32_t>(POOL_SIZE);
-    g_gotos = AllocRecords<GotoRecord>(GOTO_SIZE);
-    g_samples = AllocRecords<SampleRecord>(SAMPLE_SIZE);
-    g_srows = AllocRecords<SoldierRow>(SROW_SIZE);
-    g_fixRecs = AllocRecords<FixRecord>(FIXREC_SIZE);
-    g_avRecs = AllocRecords<AvoidRecord>(AVREC_SIZE);
-    g_rqRecs = AllocRecords<RadiusRecord>(RQREC_SIZE);
-    g_relRecs = AllocRecords<ReleaseRecord>(RELREC_SIZE);   // v38; null = no release rows (G still acts)
-    if (!g_events || !g_cursor || !g_dumps || !g_builds || !g_nodeRows ||
-        !g_orders || !g_soldierPool || !g_gotos || !g_samples || !g_srows ||
-        !g_fixRecs || !g_fixSoldiers) {
-        Log("FATAL: cannot allocate capture buffers. No hooks installed.");
-        return;
-    }
-    }   // g_captureOn
-    if (g_captureOn) {   // v41: capture buffer sizes only when they exist
-    size_t total = sizeof(EventRecord) * EVENT_SIZE + sizeof(CursorRecord) * CURSOR_SIZE +
-                   sizeof(DumpSlot) * DUMP_SIZE + sizeof(BuildRecord) * BUILD_SIZE +
-                   sizeof(NodeRow) * NODEROW_SIZE + sizeof(OrderRecord) * ORDERREC_SIZE +
-                   sizeof(uint32_t) * POOL_SIZE + sizeof(GotoRecord) * GOTO_SIZE +
-                   sizeof(SampleRecord) * SAMPLE_SIZE + sizeof(SoldierRow) * SROW_SIZE +
-                   sizeof(FixRecord) * FIXREC_SIZE + sizeof(FixSoldier) * FIX_SOLDIER_TABLE;
-    Log("  Buffers:     %d events, %d cursor, %d node dumps, %d builds, %d node rows", EVENT_SIZE,
-        CURSOR_SIZE, DUMP_SIZE, BUILD_SIZE, NODEROW_SIZE);
-    Log("               %d orders, %d go-to, %d samples, %d soldier rows (%d MB total before the watch)",
-        ORDERREC_SIZE, GOTO_SIZE, SAMPLE_SIZE, SROW_SIZE, (int)(total / 1024 / 1024));
-    Log("  Window:      %d seconds after the first hit of any hook", (int)(CAPTURE_MS / 1000));
-    Log("  Rate limit:  group 1 and builder: first %d hits after %d ms silence, else %d records/s per hook",
-        BURST_HITS, (int)SILENCE_MS, PER_SECOND);
-    Log("  Soldiers:    per unit every %d ms while any soldier moves, else every %d ms; up to %d soldiers",
-        (int)SAMPLE_MOVING_MS, (int)SAMPLE_IDLE_MS, MAX_SOLDIERS);
-    Log("  Output:      record files appended every %d s; summaries rewritten (tmp + rename)", (int)(FLUSH_MS / 1000));
+        if (!AllocCaptureBuffers()) {
+            Log("FATAL: cannot allocate capture buffers. No hooks installed.");
+            return;
+        }
+        Log("  Window:      %d seconds after the first hit of any hook", (int)(CAPTURE_MS / 1000));
+    } else {
+        Log("  Recording:   P starts a recording into a new folder pathfix_runs\\<date_time>\\ and P stops it, "
+            "any number of times (buffers allocated at the first P); O marks a moment while recording");
     }
 
     InitializeCriticalSection(&g_flushCS);
@@ -6172,9 +6428,11 @@ void Pathfix_Install() {   // registered in proxy/fixes.cpp (was InstallHooks in
         Log("Keys (only while the game has the focus): I path fix on/off (off at launch), O marker, "
             "P finish. Window %d s.", (int)(CAPTURE_MS / 1000));
     } else {
-        Log("All %d hooks installed. Path fix OFF.", HOOK_COUNT);
+        Log("All %d hooks installed. Path fix OFF, not recording.", HOOK_COUNT);
         Log("Keys (only while the game has the focus): I path fix on / off at any time (one high tone on, "
-            "one low tone off; three long low tones = disabled by a self-check).");
+            "one low tone off; three long low tones = disabled by a self-check); P recording on / off at any time "
+            "(three rising notes on, three falling notes off; three long low tones = refused); O marker while "
+            "recording.");
     }
     Log("");
 
@@ -6200,6 +6458,7 @@ void Pathfix_Remove() {    // registered in proxy/fixes.cpp (was RemoveHooks in 
 
     // If the game is closed before the window ends, the dump thread is already
     // gone (process exit kills it before DLL detach), so write here instead.
+    if (g_recActive) RecStop(true);   // v42: a recording still on when the game closes
     if (g_captureOn && !g_layoutBad && g_state != 0) WriteAllOnce();
     else if (g_layoutBad) Log("Layout self-check had failed; nothing written.");
     WatchShutdown();   // no-op if WriteAllOnce already ran it

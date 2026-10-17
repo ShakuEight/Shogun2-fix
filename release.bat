@@ -5,12 +5,12 @@ REM   2. the public DLL in its own tree (build_release\, CMake option PUBLIC_REL
 REM      FIX_<NAME> option is ON, release sources only (no log, no capture, no keys)
 REM   3. tests: every dev run, then each fix's release equivalence runs
 REM   4. package (tools\release\package.py): release\<name>-<version>\ (dinput8.dll, README.txt, SHA256.txt) and .zip
-REM Run from PowerShell as:  cmd /c "E:\_SHOGUN\pathfix\release.bat"
+REM Run from PowerShell as:  cmd /c "E:\_SHOGUN\Shogun2_fixes\release.bat"
 REM Needs the game's empire.retail.dll for the tests; set GAME_DIR if not in the default Steam path.
 setlocal
 cd /d "%~dp0"
 REM Today the public DLL holds the path fix only, so the package is the path fix's.
-set "VERSION=1.0"
+set "VERSION=1.0.1"
 set "PKGNAME=Shogun2-PathFix"
 set "PKGREADME=fixes\pathfix\release\README.txt"
 call "%~dp0build.bat"

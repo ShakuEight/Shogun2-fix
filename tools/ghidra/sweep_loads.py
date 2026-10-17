@@ -5,7 +5,7 @@
 # Ghidra headless post-script (Jython). Never modifies the program.
 #
 #   analyzeHeadless <projdir> <proj> -process <program> -noanalysis -readOnly
-#       -scriptPath E:\_SHOGUN\pathfix\tools\ghidra
+#       -scriptPath E:\_SHOGUN\Shogun2_fixes\tools\ghidra
 #       -postScript sweep_loads.py <out.csv> <dir_offsets> <width_offsets> [<min_score>] [<root> ...]
 #
 #   dir_offsets    colon list of hex displacements reported as category "direction"

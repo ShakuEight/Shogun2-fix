@@ -3,7 +3,7 @@
 # Ghidra headless post-script (Jython). Never modifies the program.
 #
 #   analyzeHeadless <projdir> <proj> -process <program> -noanalysis -readOnly
-#       -scriptPath E:\_SHOGUN\pathfix\tools\ghidra
+#       -scriptPath E:\_SHOGUN\Shogun2_fixes\tools\ghidra
 #       -postScript list_callers.py <out.txt> <entry> [<entry> ...]
 #
 # @category pathfix

@@ -5,7 +5,7 @@
 # Ghidra headless post-script (Jython). Never modifies the program.
 #
 #   analyzeHeadless <projdir> <proj> -process <program> -noanalysis -readOnly
-#       -scriptPath E:\_SHOGUN\pathfix\tools\ghidra
+#       -scriptPath E:\_SHOGUN\Shogun2_fixes\tools\ghidra
 #       -postScript find_disp.py <out.txt> <need> <disp>[:<disp>...]
 #
 #   need   minimum number of the listed displacements a function must use

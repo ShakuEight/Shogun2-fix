@@ -31,7 +31,7 @@ def summary(run_dir):
         return info
     with open(log_path, encoding="utf-8", errors="replace") as fh:
         text = fh.read()
-    m = re.search(r"(?:CAPTURE|FIX PROTOTYPE) BUILD (v\d+)", text)
+    m = re.search(r"(?:CAPTURE|FIX PROTOTYPE|PATHFIX) BUILD (v\d+)", text)
     if m:
         info["build"] = m.group(1)
     m = re.search(r"=== process (.+?) \(pid", text)
@@ -39,14 +39,21 @@ def summary(run_dir):
         info["process"] = os.path.basename(m.group(1))
     if "REFUSED:" in text:
         info["refused"] = True
-    if "SHUTDOWN" in text:
+    if "SHUTDOWN" in text or "RECORDING STOPPED" in text:   # v42: a P recording folder ends with RECORDING STOPPED
         info["state"] = "closed"
     m = re.search(r"CRASH: unhandled exception (0x[0-9A-F]+) at EIP 0x[0-9A-F]+ \(([^)]*)\)", text)
     if m:
         info["state"] = "crashed"
         info["crash"] = "%s at %s" % (m.group(1), m.group(2))
-    info["presets"] = re.findall(r"F6: (?:override preset|corner fix mode) (\d+)|(?:F[67]|I|Lane): (?:corner fix (?:ON|OFF)|lane mode \d selected, fix ON), mode (\d+)", text)
-    info["presets"] = [a or b for a, b in info["presets"]]
+    info["presets"] = re.findall(r"F6: (?:override preset|corner fix mode) (\d+)|(?:F[67]|I|Lane): (?:corner fix (?:ON|OFF)|lane mode \d selected, fix ON), mode (\d+)"
+                                 r"|I: path fix (?:ON, variant G|OFF) \(mode (\d+)", text)
+    info["presets"] = [a or b or c for a, b, c in info["presets"]]
+    m = re.search(r"P: recording (\d+) ON \(path fix ([^)]*)\)", text)
+    if m:
+        info["process"] = (info["process"] + " " if info["process"] else "") + "recording %s (fix %s at start)" % (m.group(1), m.group(2))
+    m = re.search(r"P: recording \d+ OFF after ([\d.]+) s", text)
+    if m:
+        info["window_s"] = int(float(m.group(1)))
     info["fix_disabled"] = "FIX DISABLED:" in text
     info["markers"] = len(re.findall(r"(?:F8|O): marker", text))
     secs = re.findall(r"Capturing\.\.\. .*?(\d+)/\d+ s", text)

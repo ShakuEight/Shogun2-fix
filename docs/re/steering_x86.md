@@ -88,5 +88,5 @@ lateral "spread out" term other than the separation push.
   of [REG+OFF] fields through one base register; LEA counts as "a".
 - Runner used: `launch.bat fg jdk Ghidra-Headless 12G ... AnalyzeHeadless
   E:\_SHOGUN\GHIDRA s2x86 -process empire.retail.dll -noanalysis -readOnly
-  -scriptPath E:\_SHOGUN\pathfix\tools -postScript <script> <args>` (the
+  -scriptPath E:\_SHOGUN\Shogun2_fixes\tools -postScript <script> <args>` (the
   program name in s2x86 is lower case).

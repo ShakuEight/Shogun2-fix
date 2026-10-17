@@ -6,7 +6,7 @@
 # Ghidra headless post-script (Jython). Never modifies the program.
 #
 #   analyzeHeadless <projdir> <proj> -process <program> -noanalysis -readOnly
-#       -scriptPath E:\_SHOGUN\pathfix\tools\ghidra
+#       -scriptPath E:\_SHOGUN\Shogun2_fixes\tools\ghidra
 #       -postScript anchor_hunt.py <out.csv> [<decompile_dir>]
 #
 # If <decompile_dir> is given, the decompile of every distinct anchor function

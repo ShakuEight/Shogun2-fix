@@ -5,7 +5,7 @@
 # Ghidra headless post-script (Jython). Never modifies the program.
 #
 #   analyzeHeadless <projdir> <proj> -process <program> -noanalysis -readOnly
-#       -scriptPath E:\_SHOGUN\pathfix\tools\ghidra
+#       -scriptPath E:\_SHOGUN\Shogun2_fixes\tools\ghidra
 #       -postScript sweep_fieldsets.py <out.csv> <offsets> [<min_hits>]
 #
 #   offsets   colon list of hex displacements (":" because the Windows batch

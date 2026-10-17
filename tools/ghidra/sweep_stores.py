@@ -4,7 +4,7 @@
 # Ghidra headless post-script (Jython). Never modifies the program.
 #
 #   analyzeHeadless <projdir> <proj> -process <program> -noanalysis -readOnly
-#       -scriptPath E:\_SHOGUN\pathfix\tools\ghidra
+#       -scriptPath E:\_SHOGUN\Shogun2_fixes\tools\ghidra
 #       -postScript sweep_stores.py <out.csv> <depth> <offsets> <sizes> <root> [<root> ...]
 #
 #   offsets  comma list of hex displacements, e.g. 74,78

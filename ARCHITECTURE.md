@@ -2,7 +2,7 @@
 
 How the repository is put together: the runtime, the two builds, the build system, the tests,
 and the shared reverse-engineering base. Each fix's own story is in its folder. The path fix's
-story, from the first hypothesis to release 1.0, is in
+story, from the first hypothesis to release 1.0.1, is in
 [fixes/pathfix/ARCHITECTURE.md](fixes/pathfix/ARCHITECTURE.md).
 
 Function names such as `FUN_101bc880` are Ghidra names in the original 32-bit
@@ -38,8 +38,8 @@ Every fix follows the same conventions:
 |---|---|---|
 | CMake | default tree `build/` | `-DPUBLIC_RELEASE=ON`, tree `build_release/` |
 | Fix sources | `fixes/<name>/src/` | `fixes/<name>/release/` |
-| Proxy logging | `proxy/log.cpp`: `<game>\pathfix_log.txt`, or per-launch run folders in capture mode | compiled out (`PATHFIX_NO_LOG`) |
-| Extras | keys, tones, capture with `PATHFIX_CAPTURE=1`, crash dump, test exports | none |
+| Proxy logging | `proxy/log.cpp`: `<game>\pathfix_log.txt` (local time on every line), plus a run folder per recording | compiled out (`PATHFIX_NO_LOG`) |
+| Extras | keys, tones, recording (P key, or `PATHFIX_CAPTURE=1`), crash dump, test exports | none |
 | Output | `build\dinput8.dll` | `release\<name>-<version>\dinput8.dll` and a zip |
 
 The release source of a fix is its dev source's production code path with everything else
@@ -89,8 +89,8 @@ patches only its own hooks, and writes no files.
 - **`tools/ghidra/`** holds headless Ghidra scripts, read-only and without analysis, on the
   `s2x86` and `s2ce` projects. **`tools/re/`** holds the stack-offset generator, prologue checks
   and anchor matching.
-- **Capture.** A dev build can record what its hooks see into per-launch run folders, enabled
-  with `PATHFIX_CAPTURE=1`. `tools/runs/collect_runs.py` collects them into the fix's `data/`.
+- **Capture.** A dev build can record what its hooks see into run folders: one per P recording in
+  play, or one per launch with `PATHFIX_CAPTURE=1`. `tools/runs/collect_runs.py` collects them into the fix's `data/`.
 
 ## 6. What lives where, and what is in git
 

@@ -1,7 +1,7 @@
 @echo off
 REM build.bat -- configure and build build\dinput8.dll (x86) and the offline harness with CMake + NMake.
 REM Does NOT copy anything into the game folder (see README.md, Install).
-REM Run from PowerShell as:  cmd /c "E:\_SHOGUN\pathfix\build.bat"
+REM Run from PowerShell as:  cmd /c "E:\_SHOGUN\Shogun2_fixes\build.bat"
 setlocal
 cd /d "%~dp0"
 call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x86 >nul

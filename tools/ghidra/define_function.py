@@ -6,7 +6,7 @@
 # exists at or contains the entry. Prints the resulting body ranges.
 #
 #   analyzeHeadless <projdir> <proj> -process <program> -noanalysis
-#       -scriptPath E:\_SHOGUN\pathfix\tools\ghidra
+#       -scriptPath E:\_SHOGUN\Shogun2_fixes\tools\ghidra
 #       -postScript define_function.py <entry> [<entry> ...]
 #
 # @category pathfix

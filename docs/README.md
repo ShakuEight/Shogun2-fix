@@ -14,6 +14,7 @@ function names and offsets.
 | `re/inventory.md` | Modules of the original and the Complete Edition |
 | `re/path_node_layout.md` | The unit path node (0xA0 bytes): links, corridor record, widths, follow points |
 | `re/placement_chain_x86.md` | How path nodes reach the formation's row placer |
+| `re/unit_finish_x86.md` | How a unit finishes a move order: behaviour stack, move controller, per-man ready test, the game's end-of-path release |
 | `re/soldier_steering_x86.md`, `re/steering_x86.md` | Per-soldier orders, navmesh paths, per-tick motion, soft collision, crowd damping |
 | `re/waypoint_choice_x86.md` | The funnel and how a corner apex is chosen |
 | `re/request_radius_x86.md` | The soldier's replan request radius |

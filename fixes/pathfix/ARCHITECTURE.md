@@ -282,6 +282,21 @@ exports. Its correctness argument is an equivalence test, since it was not re-me
 the harness runs the same scenarios through the dev DLL in G and through the release DLL, and
 every result must match.
 
+**v42 and release 1.0.1.** The first bug report from play: four 200-man units sent through a
+gatehouse to one spot with a shift-queued second order. With the fix off all four went on; with
+G one to three stayed at the spot for good, live and in the replay. Two recorded replays and a
+decode of how a unit finishes an order explained it. The unit's behaviour stack pops the move
+behaviour when every man is ready. A man on a go-to order is ready only in his slot, a man on a
+formation move at once, and the laying call re-orders only men who are not ready. G's anchor
+put the leader's slot short of the path end; he arrived, was never re-ordered, the cursor (his
+projection) stopped, and `cursor + D` stayed 0.7 to 4 m short of the end. So the game's release,
+formation moves for everyone once the front reaches the end, never came, and go-to men pinned
+in the stacked crowd kept the units unfinished. The **park release** sends the front past the end
+in exactly that state: anchor on this path, leader arrived, no narrow run ahead, at most D +
+depth + 3 m left; it stays latched until a new order. v42 also brought recording back into
+play: P starts and stops a recording into its own folder, any number of times, with its own
+tones, and every log line carries the local time.
+
 ---
 
 ## Part 3. What did not work, and why
@@ -331,7 +346,12 @@ radius (v35), and one distance argument (v38 to v40).
   release at once on a short approach. Its cause is not decoded.
 - The relative narrow rule (0.6 times the widest node) also fires on wide-but-narrower
   stretches. An absolute width threshold would avoid that.
-- The ready byte `ctrl+0x0C` and the per-unit flag at `[unit+0x218][ctrl+0x70]` in the go-to
-  versus formation-move decision are not explained.
+- The ready byte `ctrl+0x0C` is now explained (all men ready, set at the end of each controller
+  tick; the behaviour stack pops the controller when it is 1). The per-unit flag at
+  `[unit+0x218][ctrl+0x70]` in the go-to versus formation-move decision and the object at
+  `[s+0x248]` in the per-man ready test are not.
+- A leader parked with more than D + depth + 3 m of path left is not released by the park rule,
+  so such a unit could finish at its parked block, short of its destination layout. Not seen yet.
 - The fix has only been validated at 3x game speed.
-- v41 and the public release 1.0 have passed the offline harness but have not been played yet.
+- The park release of v42 / 1.0.1 has passed the offline harness and was accepted in game, but
+  no recording of the fixed replay has been analysed yet.

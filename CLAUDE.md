@@ -2,17 +2,17 @@
 
 Runtime fixes for Total War: Shogun 2 (the original 32-bit `Empire.Retail.dll`), all hosted by one
 `dinput8.dll` proxy. GitHub: https://github.com/ShakuEight/Shogun2-fix (local clone at
-`E:\_SHOGUN\pathfix\`; the folder name is historical).
+`E:\_SHOGUN\Shogun2_fixes\`, renamed from `E:\_SHOGUN\pathfix\` on 2026-10-17; build trees made before the rename were moved to `fixes/pathfix/archive/builds/`).
 
 | Fix | Folder | State |
 |---|---|---|
-| pathfix: formation through gates, doorways, corners | `fixes/pathfix/` | public release 1.0, dev build v41 |
+| pathfix: formation through gates, doorways, corners | `fixes/pathfix/` | public release 1.0.1, dev build v42 |
 | aiming fix | (planned) | not started |
 | shooting fix | (planned) | not started |
 
 Each fix keeps its own history and notes in `fixes/<name>/CLAUDE.md` (Claude Code loads it when
 working in that folder). The pathfix history, every phase and run from the first hypothesis to
-release 1.0, is in `fixes/pathfix/CLAUDE.md`. Shared engine knowledge goes here or in `docs/re/`.
+release 1.0.1, is in `fixes/pathfix/CLAUDE.md`. Shared engine knowledge goes here or in `docs/re/`.
 
 ## Session rules (mandatory)
 
@@ -55,7 +55,7 @@ release 1.0, is in `fixes/pathfix/CLAUDE.md`. Shared engine knowledge goes here 
   prologues, functions_x86.csv and other CSV exports; see docs/README.md). Unredacted note
   originals in `private/full_docs/` (local only).
 - `tools/ghidra/` headless scripts + `headless_decompile.bat`, `ghx86.bat` (-scriptPath
-  `E:\_SHOGUN\pathfix\tools\ghidra`); `tools/re/` stack_calc.py etc.; `tools/runs/collect_runs.py`
+  `E:\_SHOGUN\Shogun2_fixes\tools\ghidra`); `tools/re/` stack_calc.py etc.; `tools/runs/collect_runs.py`
   (into `fixes/pathfix/data/runs/` by default); `tools/release/package.py`.
 - `data/` shared RE data (call graphs), `logs/` Ghidra logs: not in git.
 - Build trees: `build/` (dev: `build.bat`), `build_release/` (public DLL: `release.bat`, CMake
@@ -63,7 +63,7 @@ release 1.0, is in `fixes/pathfix/CLAUDE.md`. Shared engine knowledge goes here 
   three not in git.
 - Scripts: `build.bat`, `test.bat` (one runner line per fix), `release.bat` (build both, all tests
   including each fix's release equivalence runs, package). Run from PowerShell as
-  `cmd /c "E:\_SHOGUN\pathfix\<script>.bat"`.
+  `cmd /c "E:\_SHOGUN\Shogun2_fixes\<script>.bat"`.
 - Git replaces the `.bak` rule for tracked files; untracked files still follow it.
   `fixes/pathfix/archive/MOVES.csv` and `MOVES_2.csv` (local) map every path of the two
   restructures. The public history is one squashed commit (2026-10-17); the earlier history is
@@ -71,7 +71,7 @@ release 1.0, is in `fixes/pathfix/CLAUDE.md`. Shared engine knowledge goes here 
 
 ## Paths
 
-- Project root: `E:\_SHOGUN\pathfix\` (git repo; the old `dinput8_proxy\` subfolder no longer exists)
+- Project root: `E:\_SHOGUN\Shogun2_fixes\` (git repo; the old `dinput8_proxy\` subfolder no longer exists)
 - Original game: `E:\SteamLibrary\steamapps\common\Total War SHOGUN 2\`
 - Target binary (original): `Empire.Retail.dll` (32-bit, Warscape engine)
 - Complete Edition (released 2026-10-13, Steam app 3846830, x64):

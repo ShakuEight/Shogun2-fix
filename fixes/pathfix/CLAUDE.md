@@ -8,8 +8,8 @@ map every old path to its new one. Shared rules, paths and engine knowledge stay
 CLAUDE.md.
 
 Since 2026-10-17 `archive/`, `analysis/`, `sim/` and `docs/research/` are local only (ignored
-by git, absent from the public history, which is one squashed commit). GitHub holds v41, the
-public release 1.0, the harness, the runbook and the READMEs.
+by git, absent from the public history, which is one squashed commit). GitHub holds the current dev
+build (v42 since 2026-10-17), the public release source (1.0.1), the harness, the runbook and the READMEs.
 
 ## Original introduction
 
@@ -79,12 +79,12 @@ BEFORE the restructure; `archive/MOVES.csv` maps every old path to its new one.
 - `docs/re/` game-binary reference (function maps, decompiles, listings,
   prologues, functions_x86.csv, *_x86.md decodes).
 - `tools/ghidra/` headless scripts + `headless_decompile.bat`, `ghx86.bat`
-  (-scriptPath is now `E:\_SHOGUN\pathfix\tools\ghidra`); `tools/re/`
+  (-scriptPath is now `E:\_SHOGUN\Shogun2_fixes\tools\ghidra`); `tools/re/`
   stack_calc.py etc.; `tools/runs/collect_runs.py`.
 - `archive/` v12..v39 sources, harnesses, build scripts, generators, build
   folders, old installed DLLs (from the game folder), backups.
-- Build: `cmd /c "E:\_SHOGUN\pathfix\build.bat"` -> `build\dinput8.dll`.
-  Test: `cmd /c "E:\_SHOGUN\pathfix\test.bat"` (full 122/122 x2, geo 32/32,
+- Build: `cmd /c "E:\_SHOGUN\Shogun2_fixes\build.bat"` -> `build\dinput8.dll`.
+  Test: `cmd /c "E:\_SHOGUN\Shogun2_fixes\test.bat"` (full 122/122 x2, geo 32/32,
   crash dump). Git replaces the `.bak` rule for tracked files; untracked
   files still follow it.
 
@@ -897,3 +897,33 @@ data/runs -> fixes/pathfix/data/runs in analysis, sim scripts and sim JSON
 (74 edits, logged in archive/MOVES_2.csv). release.bat rebuilt everything
 from the new tree: all tests passed and the public DLL came out
 byte-identical (SHA-256 1A15B08A...40AB).
+
+Bug report and v42, 2026-10-17 (user: four 200-man units through a gatehouse to one spot, then a
+shift-queued second order; "on the live game with fix off all units move without stopping",
+with the fix on one or more units stay at the spot for good, live and in the replay). The live
+battle (10:34) ran v41 with the fix OFF (I pressed on then off at 10:26); replay
+`4 kyoto police running.replay` played under v40 capture with G: run 20261017_104106 (two units
+stuck), run 20261017_114804 (one replay off, one G: off all four go on, G one stuck for good).
+Decode (`docs/re/unit_finish_x86.md`): the behaviour stack pops the move controller when every
+man is ready (FUN_103cbe40: go-to men only in their slot, formation-move men at once); the
+laying call re-orders only men not ready; at the path end (cursor + D) every man gets a
+formation move = the game's release. G's anchor put the leader's slot short of the end, he
+arrived (s+0x384 1, s+0x308 1), was never re-ordered, the cursor froze, cursor + D stayed
+0.7..4 m short: no release, go-to men pinned by the stacked units, unit never finished.
+v42 = v41 + park release (AdvanceHit: anchor applied on this path, leader arrived, no narrow run
+ahead, path left <= D + depth + 3 m -> front 0.5 m past the end, latched until a new order /
+path; rows reason "park", counters release_adv_park / _latched) + recording in play (P on / off
+any number of times, folder per recording with its own pathfix_log.txt, CSV prefix v42, tones 5
+rising / 6 falling, O marker while recording; PATHFIX_CAPTURE=1 keeps the v40 capture mode) +
+local time [hh:mm:ss.mmm] on every log line (proxy/log.cpp LogRecordingStart / Stop).
+Harness: ParkSection PR1..PR7 in full and release runs, T14 updated, T17/T18; new run "rec"
+(18). test: full 134/134 x2, geo 32/32, play 18/18, pkey 9/9, rec 18/18, crash OK; release
+1.0.1 (park release only) equivalence 79/79, release_pub 86/86, package
+release/Shogun2-PathFix-1.0.1 (dinput8.dll 123904 bytes, SHA-256 28137AE6...35CE). The old
+build trees (CMake cache from E:\_SHOGUN\pathfix, the repo folder before its rename to
+E:\_SHOGUN\Shogun2_fixes) moved to archive/builds/build_v41_tree and
+build_release_1.0_tree. v42 installed in the game folder (v40 kept there as
+dinput8.dll.v40.bak; v41 still dinput8.dll.41). The user accepted the fix ("good fix") the
+same day; no P recording of the replay test was collected. v42 and release 1.0.1 committed and
+pushed to GitHub on 2026-10-17 (second commit on top of the squashed history; path references
+moved to E:\_SHOGUN\Shogun2_fixes in the same commit).

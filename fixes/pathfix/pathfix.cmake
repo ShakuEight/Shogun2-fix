@@ -1,6 +1,6 @@
 # pathfix: included by the root CMakeLists.txt when FIX_PATHFIX is ON.
-# Dev build: src/pathfix.cpp (v41, I toggles the fix, capture with PATHFIX_CAPTURE=1) + the harness.
-# Public DLL: release/pathfix_release.cpp (variant G always on, nothing else) + the version resource.
+# Dev build: src/pathfix.cpp (v42, I toggles the fix, P toggles a recording; PATHFIX_CAPTURE=1 capture mode) + the harness.
+# Public DLL: release/pathfix_release.cpp (release 1.0.1: variant G always on, nothing else) + the version resource.
 set(PATHFIX_DIR ${CMAKE_CURRENT_LIST_DIR})
 
 target_include_directories(dinput8 PRIVATE ${PATHFIX_DIR}/src)   # the generated stack-offset headers

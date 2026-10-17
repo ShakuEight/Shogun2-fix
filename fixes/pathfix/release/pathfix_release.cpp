@@ -1,4 +1,10 @@
-// pathfix_release.cpp -- public release of the Shogun 2 path fix (release 1.0, from dev build v41).
+// pathfix_release.cpp -- public release of the Shogun 2 path fix (release 1.0.1, from dev build v42).
+//
+// 1.0.1: park release (dev v42). After the formation was laid past a narrow stretch, a unit whose
+// leader had reached his place short of the path end could stay "not finished" for good when
+// men on go-to orders could not reach their places (several units sent to one spot), so a
+// shift-queued next order never started. The block front now goes past the path end in that
+// case, which is the game's own end-of-move state, as it would be without the fix.
 //
 // What it does: variant G of the path fix, always on, nothing else. When a unit's formation
 // block would be laid inside a narrow stretch of its path (gate, doorway, ramp), the block is
@@ -96,6 +102,7 @@ static const uint32_t G_CALL_SITE_RVA = 0x1BC988;   // return address of CALL FU
 static const DWORD G_HOLD_AGE_MS = GT_MS(1000);
 static const float G_END_GAP_M = 2.0f;
 static const int   G_HOLDS = 64;
+static const float G_PARK_PAST_M = 0.5f;       // park release: the front this far past the path end
 
 // ---------------------------------------------------------------------------
 // State
@@ -772,6 +779,7 @@ struct GPending {
     int32_t  nRuns;
     float    runs[G_MAX_RUNS][2];   // [start, end) arc lengths of the narrow runs
     uint8_t  newOrder;          // leader index ctrl+0x30 was 0 (first laying call after an order)
+    uint8_t  leaderParked;      // the leader has arrived at his slot (s+0x384 == 1 and s+0x308 == 1)
 };
 static GPending g_gp[G_PENDING] = {};
 
@@ -781,6 +789,8 @@ struct GHold {                  // per-controller anchor hold
     float    remFront;          // path end - block front laid last time (valid while active)
     float    remCursor;         // path end - cursor at the last call
     uint8_t  active;
+    uint8_t  anchored;          // a release anchor was applied since the last order / new path
+    uint8_t  latched;           // the park release fired; the front stays past the path end
 };
 static GHold g_gh[G_HOLDS] = {};
 
@@ -788,12 +798,15 @@ static GHold* GHoldFor(uint32_t ctrl) {
     for (int i = 0; i < G_HOLDS; i++)
         if ((uint32_t)g_gh[i].ctrl == ctrl) return &g_gh[i];
     for (int i = 0; i < G_HOLDS; i++)
-        if (InterlockedCompareExchange(&g_gh[i].ctrl, (LONG)ctrl, 0) == 0) { g_gh[i].stamp = 0; g_gh[i].active = 0; return &g_gh[i]; }
+        if (InterlockedCompareExchange(&g_gh[i].ctrl, (LONG)ctrl, 0) == 0) {
+            g_gh[i].stamp = 0; g_gh[i].active = 0; g_gh[i].anchored = 0; g_gh[i].latched = 0;
+            return &g_gh[i];
+        }
     GHold* oldest = &g_gh[0];
     for (int i = 1; i < G_HOLDS; i++)
         if (g_gh[i].stamp < oldest->stamp) oldest = &g_gh[i];
     InterlockedExchange(&oldest->ctrl, (LONG)ctrl);
-    oldest->stamp = 0; oldest->active = 0;
+    oldest->stamp = 0; oldest->active = 0; oldest->anchored = 0; oldest->latched = 0;
     return oldest;
 }
 
@@ -859,6 +872,14 @@ static void GPlan(uint32_t ctrl, uint32_t n, DWORD now) {
         uint32_t li = 0xFFFFFFFF;
         ReadDword(ctrl + 0x30, &li);
         gp->newOrder = li == 0 ? 1 : 0;
+        // has the leader (soldier li of the unit [ctrl+4]) arrived at his slot?
+        gp->leaderParked = 0;
+        uint32_t u = 0, cnt = 0, arr = 0, s = 0;
+        uint8_t b384 = 0, b308 = 0;
+        if (ReadDword(ctrl + 0x04, &u) && PtrPlausible(u) && ReadDword(u + 0x18, &cnt) && ReadDword(u + 0x1C, &arr) &&
+            li < cnt && cnt <= (uint32_t)MAX_SOLDIERS && PtrPlausible(arr) && ReadDword(arr + 4 * li, &s) &&
+            PtrPlausible(s) && MemcpyTry(&b384, s + 0x384, 1) && MemcpyTry(&b308, s + 0x308, 1))
+            gp->leaderParked = (b384 == 1 && b308 == 1) ? 1 : 0;
     }
     float files = floorf(wmax / G_FILE_M + 0.001f);
     if (files < 1.0f) files = 1.0f;
@@ -896,16 +917,17 @@ static void AdvanceHit(const uint8_t* ctx) {
     int run = -1;
     for (int i = 0; i < gp->nRuns; i++)
         if (P >= gp->runs[i][0] && P < gp->runs[i][1]) { run = i; break; }
-    float A = P;
+    float A = P, Dp = D;
     bool applied = false;
     if (run >= 0) {
         A = gp->runs[run][1] + gp->depth + G_MARGIN_M;
         for (int i = run + 1; i < gp->nRuns; i++)
             if (A >= gp->runs[i][0] && A < gp->runs[i][1]) A = gp->runs[i][1] + gp->depth + G_MARGIN_M;
         if (A > gp->pathEnd - G_END_GAP_M) A = gp->pathEnd - G_END_GAP_M;   // never the game's end-of-path state
-        float Dp = A - gp->s0;
-        if (Dp > D) {
-            *dist = Dp;
+        float Da = A - gp->s0;
+        if (Da > D) {
+            *dist = Da;
+            Dp = Da;
             applied = true;
         }
     }
@@ -913,19 +935,35 @@ static void AdvanceHit(const uint8_t* ctx) {
         GHold* gh = GHoldFor(gp->ctrl);
         DWORD gnow = GameNow();
         float curRem = gp->pathEnd - gp->s0;
-        if (gp->newOrder || gh->stamp == 0 || gnow - gh->stamp > G_HOLD_AGE_MS || curRem > gh->remCursor + 1.0f)
+        bool newPath = gp->newOrder || gh->stamp == 0 || curRem > gh->remCursor + 1.0f;
+        if (newPath) { gh->anchored = 0; gh->latched = 0; }
+        if (newPath || gnow - gh->stamp > G_HOLD_AGE_MS)
             gh->active = 0;
         if (applied) {
             gh->remFront = gp->pathEnd - A;
             gh->active = 1;
+            gh->anchored = 1;
         } else if (gh->active) {
             float remP = gp->pathEnd - P;
             if (remP > gh->remFront + 0.05f) {
                 float Dh = (gp->pathEnd - gh->remFront) - gp->s0;
-                if (Dh > D) *dist = Dh;
+                if (Dh > D) { *dist = Dh; Dp = Dh; }
             } else {
                 gh->active = 0;
             }
+        }
+        // park release: the leader arrived at a slot the anchor put short of the path end, so
+        // the cursor (his projection) stops and the game's release (front at the end) never
+        // comes; with no narrow run ahead and at most D + depth + margin left, the front goes
+        // past the end and stays there until a new order or a new path.
+        bool runAhead = false;
+        for (int i = 0; i < gp->nRuns; i++)
+            if (gp->runs[i][1] > gp->s0 + 0.01f) { runAhead = true; break; }
+        if (!runAhead && !gp->newOrder && gp->s0 + Dp < gp->pathEnd &&
+            (gh->latched || (gh->anchored && gp->leaderParked && curRem <= D + gp->depth + G_MARGIN_M))) {
+            *dist = curRem + G_PARK_PAST_M;
+            gh->latched = 1;
+            gh->active = 0;
         }
         gh->remCursor = curRem;
         gh->stamp = gnow ? gnow : 1;

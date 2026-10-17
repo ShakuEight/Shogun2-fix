@@ -6,7 +6,7 @@ own folder. Install by copying it in, uninstall by deleting it.
 
 | Fix | Problem it fixes | State |
 |---|---|---|
-| [**pathfix**](fixes/pathfix/README.md) | Units ordered through gates, doorways and round corners stop in a stretched block and file through one man at a time | Public release 1.0 |
+| [**pathfix**](fixes/pathfix/README.md) | Units ordered through gates, doorways and round corners stop in a stretched block and file through one man at a time | Public release 1.0.1 |
 | aiming fix | | Planned |
 | shooting fix | | Planned |
 
@@ -60,7 +60,7 @@ cmd /c release.bat    dev build, public build, all tests including each fix's re
 proxy/              dinput8 proxy core: DLL entry, export forwarding, logging, fix registry
 fixes/
   README.md         how to add a fix
-  pathfix/          the path fix: dev build v41, public release source, harness, docs
+  pathfix/          the path fix: dev build v42, public release source, harness, docs
 docs/re/            what is known about Empire.Retail.dll, shared by all fixes: function
                     maps x86 to x64 and engine decodes (Ghidra output stays local)
 tools/

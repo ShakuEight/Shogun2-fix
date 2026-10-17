@@ -9,10 +9,20 @@ inline void LogClose() {}
 #define Log(...) ((void)0)
 inline const char* LogRunDir() { return ""; }
 inline bool LogCaptureMode() { return false; }
+inline bool LogRecordingStart(int, char* folderOut, size_t cap) { if (folderOut && cap) folderOut[0] = 0; return false; }
+inline void LogRecordingStop() {}
 #else
 void LogInit();
 void LogClose();
+// Every line starts with the local time [hh:mm:ss.mmm].
 void Log(const char* fmt, ...);
+
+// Recording (dev build, P key): a new folder <game dir>\pathfix_runs\<YYYYMMDD_HHMMSS>\ becomes
+// LogRunDir() and gets its own pathfix_log.txt, a copy of every line logged until
+// LogRecordingStop(), which closes it and makes the game folder LogRunDir() again.
+// Returns false (nothing changed) when the folder or its log cannot be created.
+bool LogRecordingStart(int number, char* folderOut, size_t cap);
+void LogRecordingStop();
 
 // Folder (with trailing backslash) that this launch writes into. In capture
 // mode (see LogCaptureMode) with PATHFIX_RUN_FOLDERS it is a new folder

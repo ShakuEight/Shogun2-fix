@@ -1,5 +1,5 @@
-Shogun 2 Path Fix 1.0
-=====================
+Shogun 2 Path Fix 1.0.1
+=======================
 
 An unofficial fix for Total War: SHOGUN 2 battles.
 
@@ -56,12 +56,24 @@ WHAT IT CHANGES, IN SHORT
   spot.
 - No crowd slowdown at corners: the game's slowdown for men pressed from
   all sides is skipped for men rounding a corner.
+- End of the move: once the formation has been placed beyond a passage and
+  the unit's leader has reached his place close to the destination, the
+  move ends the way the game ends it without the fix (every man still on his
+  way is sent to his place in the final formation).
 
 The file only changes values the game is about to use (a waypoint, a
 clearance radius, a distance). Pathfinding, collision and combat are the
 game's own.
 
 
-Version 1.0, built from development build v41.
+CHANGES
+
+1.0.1  Units sent through a gate to the same spot as other units, with a
+       next order queued (Shift + click), could stay at the spot for good
+       and never start the queued order. Fixed.
+1.0    First release.
+
+
+Version 1.0.1, built from development build v42.
 Copyright 2026 ShakuEight. Licensed under the Apache License 2.0 (see LICENSE and NOTICE).
 Source: https://github.com/ShakuEight/Shogun2-fix

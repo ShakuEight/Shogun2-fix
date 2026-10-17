@@ -770,6 +770,71 @@ static double ExpectTip(uint8_t** S, const int* mem, int nm, int self, double Vx
     return q;
 }
 
+// v42 park release (the same checks in the full run and in the release equivalence run). The
+// leader is soldier [ctrl+0x30] = 2 of the unit [ctrl+4]; arrived = bytes +0x384 == 1, +0x308 == 1.
+// Path M: nodes 0..1 wide (36 m, 20 m long), 2..3 narrow (5.5 m, 8 m), 4..5 wide (20 m): run [40, 56)
+// from node 0. Ten men at 36 m: depth 0.85 m, so the park cap is D 11 + 0.85 + 3 = 14.85 m.
+static void ParkSection(uint8_t* C, uint8_t* leader) {
+    uint8_t* M[6];
+    const float ml[6] = { 20, 20, 8, 8, 20, 20 };
+    const float mw[6] = { 36, 36, 5.5f, 5.5f, 36, 36 };
+    MakeNodes(M, 6, ml, mw);
+    float cur[2];
+    auto run = [&](uint8_t* node, float t) {
+        PutU(C, 0x34, (uint32_t)(uintptr_t)node); PutF(C, 0x38, t);
+        CallOrders(C);
+        uint32_t u = (uint32_t)(uintptr_t)node;
+        memcpy(cur, &u, 4); cur[1] = t;
+        CallAdvance(cur, 11.0f);
+    };
+    auto at = [&](uint8_t* node) { return GetU((uint8_t*)cur, 0) == (uint32_t)(uintptr_t)node; };
+    leader[0x384] = 1; leader[0x308] = 0;
+    // PR1: cursor 10 m into node 1 (walk from there: run [20, 36)), P 21 in the run -> anchor 39.85 = node 4 t 0.1925
+    run(M[1], 0.5f);
+    CHECK(at(M[4]) && fabsf(cur[1] - 0.1925f) < 0.01f,
+          "PR1 park setup: anchor past the narrow run (node %s t %.4f)", at(M[4]) ? "4" : "other", cur[1]);
+    // PR2: leader arrived, cursor 6 m into node 4: 34 m of path left (> 14.85) -> vanilla P 17 = node 4 t 0.85
+    leader[0x308] = 1;
+    run(M[4], 0.3f);
+    CHECK(at(M[4]) && fabsf(cur[1] - 0.85f) < 1e-3f,
+          "PR2 leader arrived, 34 m of path left -> no park release, vanilla (node 4 t %.4f)", cur[1]);
+    // PR3: cursor 7 m into node 5: 13 m left (<= 14.85), P 18 short of the end 20 -> front 0.5 m past the end
+    run(M[5], 0.35f);
+    CHECK(at(M[5]) && cur[1] >= 1.0f,
+          "PR3 leader arrived, 13 m left, no run ahead -> front past the path end (node %s t %.4f >= 1)",
+          at(M[5]) ? "5" : "other", cur[1]);
+    // PR4: the leader moves again (not arrived): the release stays latched
+    leader[0x308] = 0;
+    run(M[5], 0.4f);
+    CHECK(at(M[5]) && cur[1] >= 1.0f, "PR4 latched: leader moving again -> front still past the end (t %.4f)", cur[1]);
+    // PR5: a new order (leader index 0 at the laying call) clears the latch and the anchor -> vanilla P 19 = t 0.95
+    leader[0x308] = 1;
+    PutU(C, 0x30, 0);
+    run(M[5], 0.4f);
+    PutU(C, 0x30, 2);
+    CHECK(at(M[5]) && fabsf(cur[1] - 0.95f) < 1e-3f, "PR5 new order -> latch cleared, vanilla (t %.4f)", cur[1]);
+    // PR6: leader arrived but no anchor on this path since the order -> vanilla
+    run(M[5], 0.4f);
+    CHECK(at(M[5]) && fabsf(cur[1] - 0.95f) < 1e-3f, "PR6 leader arrived, no anchor on this path -> vanilla (t %.4f)", cur[1]);
+    // PR7: a second narrow run still ahead. Path Q: wide 20, narrow 8, wide 4, narrow 2, wide 9 (run 1 [20, 28),
+    // run 2 [32, 34)). Anchor from run 1: 28 + 3.85 = 31.85 = node 2 t 0.9625; then the leader arrived, cursor 2 m
+    // into node 2: 13 m left, run 2 at [4, 6) ahead -> no park release, vanilla P 13 = node 4 t 0.7778
+    uint8_t* Q[5];
+    const float ql[5] = { 20, 8, 4, 2, 9 };
+    const float qw[5] = { 36, 5.5f, 36, 5.5f, 36 };
+    MakeNodes(Q, 5, ql, qw);
+    leader[0x308] = 0;
+    run(Q[0], 0.5f);
+    CHECK(at(Q[2]) && fabsf(cur[1] - 0.9625f) < 0.01f, "PR7a anchor past the first run (node %s t %.4f)",
+          at(Q[2]) ? "2" : "other", cur[1]);
+    leader[0x308] = 1;
+    run(Q[2], 0.5f);
+    CHECK(at(Q[4]) && fabsf(cur[1] - 0.7778f) < 1e-3f,
+          "PR7 a narrow run still ahead -> no park release, vanilla (node %s t %.4f)", at(Q[4]) ? "4" : "other", cur[1]);
+    leader[0x308] = 0;
+    PutU(C, 0x34, 0); PutF(C, 0x38, 0.0f);
+}
+
 static void ReadText(const char* path, char* text, size_t cap) {
     size_t n = 0;
     FILE* f = fopen(path, "rb");
@@ -790,10 +855,11 @@ int main(int argc, char** argv) {
     if (argc < 5) { printf("usage: hooktest41 <game dll> <proxy> <tag> full|crash|geo|play|pkey|release\n"); return 2; }
     bool crash = strcmp(argv[4], "crash") == 0;
     bool geo = strcmp(argv[4], "geo") == 0;
-    bool play = strcmp(argv[4], "play") == 0;     // v41: no recording
+    bool play = strcmp(argv[4], "play") == 0;     // v41: no recording (v42: no P pressed)
     bool pkey = strcmp(argv[4], "pkey") == 0;     // v41: keys after P
+    bool rec = strcmp(argv[4], "rec") == 0;       // v42: play, P toggles a recording
     bool release = strcmp(argv[4], "release") == 0;   // public release: G always on, equivalence with dev G
-    SetEnvironmentVariableA("PATHFIX_CAPTURE", (play || release) ? nullptr : "1");
+    SetEnvironmentVariableA("PATHFIX_CAPTURE", (play || rec || release) ? nullptr : "1");
     HMODULE game = LoadLibraryExA(argv[1], nullptr, DONT_RESOLVE_DLL_REFERENCES);
     if (!game) { printf("cannot map game dll: %lu\n", GetLastError()); return 1; }
     g_base = (uint8_t*)game;
@@ -993,7 +1059,7 @@ int main(int argc, char** argv) {
         return g_fail ? 4 : 0;
     }
 
-    if (play || pkey) {
+    if (play || pkey || rec) {
         // shared: G release on a fake path (as G1) and a lead-the-turn point (as LD2)
         auto gCheck = [&](const char* tag, bool expectRelease) {
             uint8_t* N[10];
@@ -1028,7 +1094,82 @@ int main(int argc, char** argv) {
         };
         char logPath[MAX_PATH + 32];
         static char text[1 << 20];
-        if (play) {
+        if (rec) {
+            // v42: P starts a recording into a new run folder, P stops it; again; then P and the game closes.
+            auto latestDir = [&](char* out) {
+                out[0] = 0;
+                FILE* f = fopen(latest, "r");
+                if (!f) return;
+                char name[64] = "";
+                fgets(name, sizeof(name), f);
+                fclose(f);
+                char* nl = strpbrk(name, "\r\n");
+                if (nl) *nl = 0;
+                sprintf(out, "%spathfix_runs\\%s\\", exeDir, name);
+            };
+            auto dataRows = [&](const char* dir, const char* name) -> int {
+                char p[MAX_PATH + 64];
+                sprintf(p, "%s%s", dir, name);
+                FILE* f = fopen(p, "r");
+                if (!f) return -1;
+                int lines = 0, c, last = '\n';
+                while ((c = fgetc(f)) != EOF) { if (c == '\n') lines++; last = c; }
+                if (last != '\n') lines++;
+                fclose(f);
+                return lines - 1;   // header
+            };
+            auto fileHas = [&](const char* dir, const char* name, const char* what) -> bool {
+                char p[MAX_PATH + 64];
+                sprintf(p, "%s%s", dir, name);
+                ReadText(p, text, sizeof(text));
+                return strstr(text, what) != nullptr;
+            };
+            printf("rec (P toggles a recording):\n");
+            CHECK(runDir[0] == 0, "RE1 no run folder at launch");
+            char d1[MAX_PATH] = "", d2[MAX_PATH] = "", d3[MAX_PATH] = "";
+            Press(4);   // P: recording 1 on
+            latestDir(d1);
+            CHECK(d1[0] && GetFileAttributesA(d1) != INVALID_FILE_ATTRIBUTES, "RE2 P -> recording 1 folder %s", d1);
+            Press(0);   // I -> G
+            gCheck("RE3 recording 1, G on: block released past the narrow run", true);
+            Press(2);   // O: marker
+            Press(4);   // P: recording 1 off
+            Sleep(1000);
+            int rows1 = dataRows(d1, "pathfix_capture_v42_release.csv");
+            CHECK(rows1 == 1, "RE4 recording 1: release.csv with the RE3 row (%d data rows)", rows1);
+            CHECK(fileHas(d1, "pathfix_log.txt", "PATHFIX BUILD v42 recording 1") && strstr(text, "RECORDING STOPPED") &&
+                  strstr(text, "P: recording 1 OFF"), "RE5 recording 1: its own log, stopped");
+            CHECK(fileHas(d1, "pathfix_capture_v42_events.csv", ",MARKER,") && strstr(text, ",FIXMODE,"),
+                  "RE6 recording 1: events.csv with the O marker and the fix mode rows");
+            CHECK(dataRows(d1, "pathfix_capture_v42_orders.csv") >= 1, "RE7 recording 1: orders.csv rows");
+            gCheck("RE8 not recording: G still acts", true);
+            Press(4);   // P: recording 2 on
+            latestDir(d2);
+            CHECK(d2[0] && strcmp(d1, d2) != 0 && GetFileAttributesA(d2) != INVALID_FILE_ATTRIBUTES,
+                  "RE9 P again -> a new folder for recording 2 (%s)", d2);
+            gCheck("RE10 recording 2: block released", true);
+            Press(4);   // P: recording 2 off
+            Sleep(1000);
+            int rows2 = dataRows(d2, "pathfix_capture_v42_release.csv");
+            CHECK(rows2 == 1 && dataRows(d1, "pathfix_capture_v42_release.csv") == 1,
+                  "RE11 recording 2 starts empty: 1 release row there (%d), recording 1 untouched", rows2);
+            CHECK(fileHas(d2, "pathfix_log.txt", "PATHFIX BUILD v42 recording 2") && strstr(text, "RECORDING STOPPED") &&
+                  !strstr(text, "recording 1 ON"), "RE12 recording 2: its own log, without recording 1's lines");
+            Press(4);   // P: recording 3 on, then the game closes
+            latestDir(d3);
+            Press(0);   // I -> off
+            FreeLibrary(proxy);
+            CHECK(d3[0] && strcmp(d3, d2) != 0 && fileHas(d3, "pathfix_log.txt", "(game closed)") &&
+                  strstr(text, "RECORDING STOPPED"), "RE13 recording 3 still on when the game closes: stopped and written");
+            sprintf(logPath, "%spathfix_log.txt", exeDir);
+            ReadText(logPath, text, sizeof(text));
+            const char* l = strstr(text, "\n[");
+            bool stamped = l && strlen(l) > 16 && l[4] == ':' && l[7] == ':' && l[10] == '.' && l[14] == ']';   // l -> "\n[hh"
+            CHECK(stamped, "RE14 session log lines start with the local time [hh:mm:ss.mmm]");
+            CHECK(strstr(text, "P: recording 1 ON") && strstr(text, "P: recording 1 OFF") && strstr(text, "P: recording 2 ON") &&
+                  strstr(text, "P: recording 2 OFF") && strstr(text, "P: recording 3 ON") && strstr(text, "P refused") == nullptr,
+                  "RE15 session log: recordings 1..3 on and off, nothing refused");
+        } else if (play) {
             printf("play (no recording):\n");
             CHECK(runDir[0] == 0, "PL1 no run folder named in pathfix_runs\\latest.txt");
             Apex("PL2 launch: off -> game point", S[3], pA, r, zl, r, zl);
@@ -1036,8 +1177,7 @@ int main(int argc, char** argv) {
             Press(0);   // I -> G
             leadCheck("PL4 G on: lead-the-turn point");
             gCheck("PL5 G on: block released past the narrow run", true);
-            Press(4);   // P: not read in play
-            Press(2);   // O: not read in play
+            Press(2);   // O: no recording, ignored (v42: P would start one, not pressed here)
             Press(0);   // I -> off
             Apex("PL6 I again: off -> game point", S[3], pA, r, zl, r, zl);
             gCheck("PL7 off again: vanilla advance", false);
@@ -1064,16 +1204,20 @@ int main(int argc, char** argv) {
             FreeLibrary(proxy);
             sprintf(logPath, "%spathfix_log.txt", runDir);
         }
+        if (rec) {
+            printf("RESULT %d passed, %d failed\n", g_pass, g_fail);
+            return g_fail ? 4 : 0;
+        }
         ReadText(logPath, text, sizeof(text));
-        CHECK(strstr(text, "PATHFIX BUILD v41") != nullptr, "LG1 log: v41 banner");
+        CHECK(strstr(text, "PATHFIX BUILD v42") != nullptr, "LG1 log: v42 banner");
         const char* on = strstr(text, "I: path fix ON, variant G (mode 10");
         const char* off = on ? strstr(on, "I: path fix OFF (mode 0") : nullptr;
         CHECK(on && off, "LG2 log: I -> ON variant G, then I -> OFF");
         if (play) {
             CHECK(strstr(text, "Capture:     OFF") != nullptr, "LG3 log: capture OFF");
-            CHECK(strstr(text, "CAPTURE WINDOW OPEN") == nullptr && strstr(text, "P: finishing") == nullptr &&
-                  strstr(text, "O: marker") == nullptr && strstr(text, "O ignored") == nullptr,
-                  "LG4 log: no capture window, P and O not read");
+            CHECK(strstr(text, "CAPTURE WINDOW OPEN") == nullptr && strstr(text, "P: recording") == nullptr &&
+                  strstr(text, "O: marker") == nullptr && strstr(text, "O ignored: not recording") != nullptr,
+                  "LG4 log: no capture window, no recording, O ignored without a recording");
         } else {
             const char* p = strstr(text, "P: finishing capture");
             CHECK(p && on && on > p, "LG3 log: I switched the fix on after P finished the capture");
@@ -1384,6 +1528,8 @@ int main(int argc, char** argv) {
               "G7 widest node 8 m -> no choke by the rule -> vanilla (node 1 t %.4f)", cur[1]);
         PutU(C, 0x34, 0); PutF(C, 0x38, 0.0f);
     }
+        printf("park release (v42, as in the full run):\n");
+        ParkSection(C, S[2]);
 
         printf("frame self-check:\n");
         g_eaxDelta = 0x20;
@@ -1769,6 +1915,8 @@ int main(int argc, char** argv) {
               "G7 widest node 8 m -> no choke by the rule -> vanilla (node 1 t %.4f)", cur[1]);
         PutU(C, 0x34, 0); PutF(C, 0x38, 0.0f);
     }
+    printf("park release (v42):\n");
+    ParkSection(C, S[2]);
 
     // ---- I: off (cycle G -> off); F7 while off selects mode 1 without switching on
     Press(0);
@@ -1813,11 +1961,11 @@ int main(int argc, char** argv) {
     // ---- other hooks still record; flush after 10 s
     Sleep(9000);
     printf("files before the frame test:\n");
-    FileSize(runDir, "pathfix_capture_v41_fix.csv");
-    FileSize(runDir, "pathfix_capture_v41_fixraw.csv");
-    FileSize(runDir, "pathfix_capture_v41_fix_totals.csv");
-    FileSize(runDir, "pathfix_capture_v41_soldiers.csv");
-    FileSize(runDir, "pathfix_capture_v41_events.csv");
+    FileSize(runDir, "pathfix_capture_v42_fix.csv");
+    FileSize(runDir, "pathfix_capture_v42_fixraw.csv");
+    FileSize(runDir, "pathfix_capture_v42_fix_totals.csv");
+    FileSize(runDir, "pathfix_capture_v42_soldiers.csv");
+    FileSize(runDir, "pathfix_capture_v42_events.csv");
 
     // ---- frame self-check: EAX != ESP+0x44 must disable the fix for good
     Press(0);   // v41: I -> G
@@ -1840,9 +1988,9 @@ int main(int argc, char** argv) {
     CHECK(memcmp(g_base + 0x367600, "\x55\x8B\xEC\x83\xE4\xF0", 6) == 0, "U2 integrator entry restored");
     CHECK(memcmp(g_base + 0x3670A0, "\x83\xEC\x10\x56\x57", 5) == 0, "U3 advance entry restored");
     printf("files after unload:\n");
-    FileSize(runDir, "pathfix_capture_v41_fix.csv");
-    FileSize(runDir, "pathfix_capture_v41_fixraw.csv");
-    FileSize(runDir, "pathfix_capture_v41_fix_totals.csv");
+    FileSize(runDir, "pathfix_capture_v42_fix.csv");
+    FileSize(runDir, "pathfix_capture_v42_fixraw.csv");
+    FileSize(runDir, "pathfix_capture_v42_fix_totals.csv");
     {
         static char text[1 << 20];
         char path[MAX_PATH + 48];
@@ -1867,14 +2015,14 @@ int main(int argc, char** argv) {
         CHECK(strstr(text, "FIX DISABLED: frame: EAX != hook-point ESP + 0x44") != nullptr, "L5 log: FIX DISABLED (frame)");
         CHECK(strstr(text, "I refused: the corner fix is DISABLED") != nullptr, "L6 log: F6 refused after disable");
         CHECK(strstr(text, "self-checks: frame 1/") != nullptr, "L7 log: fix totals with one frame failure");
-        CHECK(strstr(text, "PATHFIX BUILD v41") != nullptr, "L8 log: v41 banner");
+        CHECK(strstr(text, "PATHFIX BUILD v42") != nullptr, "L8 log: v42 banner");
         CHECK(strstr(text, "v36 game clock: object 0x") != nullptr, "GT6 log: clock object noted at the first FUN_101bc880 hit");
         CHECK(strstr(text, "Endpoints:   FUN_10393000 PASS, FUN_103a0080 PASS") != nullptr, "L12 log: endpoint helpers byte-checked");
         CHECK(strstr(text, "Sound check: one low tone") != nullptr, "L9 log: sound check at window open");
         CHECK(strstr(text, "PlaySound failed") == nullptr, "L10 log: no PlaySound failure");
         CHECK(strstr(text, "O: marker 1") != nullptr, "L11 log: marker under its letter key");
 
-        sprintf(path, "%spathfix_capture_v41_fix_totals.csv", runDir);
+        sprintf(path, "%spathfix_capture_v42_fix_totals.csv", runDir);
         ReadText(path, text, sizeof(text));
         printf("  totals: adjusted %ld, no_helpers %ld, other_pulled %ld, narrow %ld, geometry %ld, mismatch %ld, "
                "geo checked %ld failed %ld, match checked %ld failed %ld, raw %ld, fix-hook samples %ld, "
@@ -1953,23 +2101,23 @@ int main(int argc, char** argv) {
         CHECK(TotalsValue(text, "raw_dumps") == 6, "T2 raw dump: 6 distinct side objects (pA, short, gate, edge, narrow, other end; the link portal has no E read)");
         CHECK(TotalsValue(text, "samples_from_fix_hook") > 0, "T3 soldier samples also triggered from the fix hook");
 
-        sprintf(path, "%spathfix_capture_v41_fixraw.csv", runDir);
+        sprintf(path, "%spathfix_capture_v42_fixraw.csv", runDir);
         ReadText(path, text, sizeof(text));
         int lines = 0;
         for (const char* p = text; *p; p++) if (*p == '\n') lines++;
         CHECK(lines == 7, "T4 fixraw.csv: header + 6 rows (got %d lines)", lines);
         // v37: speed-law columns in the soldier rows and leader / ready / speed mode in the order rows
-        sprintf(path, "%spathfix_capture_v41_soldiers.csv", runDir);
+        sprintf(path, "%spathfix_capture_v42_soldiers.csv", runDir);
         ReadText(path, text, sizeof(text));
         CHECK(strstr(text, ",s_corridor,s_radius,spd_max,spd_cur,spd_tgt,spd_cmd,spd_mul,ord_spd,ord_t,ord_mode,elapsed,moving,direct,f384,f308") != nullptr,
               "SP1 soldiers.csv header: speed-law columns");
         CHECK(strstr(text, ",3.500,1.250,7.500,1.200,0.9000,3.500,3.143,0,0.70,1,0,1,0") != nullptr,
               "SP1 soldiers.csv: a fake soldier's speed fields recorded (max 3.5, cur 1.25, tgt 7.5, cmd 1.2, mul 0.9, order 3.5 / 3.14 / mode 0, elapsed 0.7, moving, f384)");
-        sprintf(path, "%spathfix_capture_v41_orders.csv", runDir);
+        sprintf(path, "%spathfix_capture_v42_orders.csv", runDir);
         ReadText(path, text, sizeof(text));
         CHECK(strstr(text, ",listed,leader_idx,ready,speed_mode,soldiers") != nullptr, "SP2 orders.csv header: leader_idx, ready, speed_mode");
         CHECK(strstr(text, ",2,1,1,") != nullptr, "SP2 orders.csv: leader index 2, ready 1, speed mode 1 recorded");
-        sprintf(path, "%spathfix_capture_v41_radius.csv", runDir);
+        sprintf(path, "%spathfix_capture_v42_radius.csv", runDir);
         ReadText(path, text, sizeof(text));
         lines = 0;
         for (const char* p = text; *p; p++) if (*p == '\n') lines++;
@@ -1977,7 +2125,7 @@ int main(int argc, char** argv) {
               strstr(text, ",unit,") != nullptr && strstr(text, ",own,") != nullptr,
               "T13 radius.csv: assigned / balanced rows, own and unit keys (%d lines)", lines);
         // v38: release counters and rows
-        sprintf(path, "%spathfix_capture_v41_fix_totals.csv", runDir);
+        sprintf(path, "%spathfix_capture_v42_fix_totals.csv", runDir);
         ReadText(path, text, sizeof(text));
         printf("  release: plans %ld (bad cursor %ld, walk fail %ld, no wide %ld, no runs %ld, with runs %ld), adv calls %ld, "
                "other site %ld, no plan %ld, mismatch %ld, vanilla %ld, applied %ld, to end %ld, rows %ld, held %ld, hold end %ld, reset %ld\n",
@@ -1989,15 +2137,19 @@ int main(int argc, char** argv) {
                TotalsValue(text, "release_adv_vanilla"), TotalsValue(text, "release_adv_applied"),
                TotalsValue(text, "release_adv_to_end"), TotalsValue(text, "release_rows"),
                TotalsValue(text, "release_adv_held"), TotalsValue(text, "release_adv_hold_end"), TotalsValue(text, "release_hold_reset"));
-        CHECK(TotalsValue(text, "release_plan_calls") == 8 && TotalsValue(text, "release_plan_with_runs") == 7 &&
+        // v42: the park section adds 8 plans (3 with runs), 2 applied, 6 vanilla-point calls, 2 hold ends, 8 rows
+        CHECK(TotalsValue(text, "release_plan_calls") == 16 && TotalsValue(text, "release_plan_with_runs") == 10 &&
               TotalsValue(text, "release_plan_no_wide") == 1 && TotalsValue(text, "release_plan_walk_fail") == 0 &&
-              TotalsValue(text, "release_adv_applied") == 2 && TotalsValue(text, "release_adv_to_end") == 1 &&
-              TotalsValue(text, "release_adv_vanilla") == 4 && TotalsValue(text, "release_adv_no_plan") == 1 &&
+              TotalsValue(text, "release_adv_applied") == 4 && TotalsValue(text, "release_adv_to_end") == 1 &&
+              TotalsValue(text, "release_adv_vanilla") == 10 && TotalsValue(text, "release_adv_no_plan") == 1 &&
               TotalsValue(text, "release_adv_mismatch") == 1 && TotalsValue(text, "release_adv_other_site") == 1 &&
-              TotalsValue(text, "release_adv_held") == 1 && TotalsValue(text, "release_adv_hold_end") == 1 &&
-              TotalsValue(text, "release_rows") == 6,
-              "T14 release counters: 8 plans (7 with runs, 1 no wide node), 2 applied (1 to the end), 4 vanilla, 1 held, 1 hold end, 1 no plan, 1 mismatch, 1 other site, 6 rows");
-        sprintf(path, "%spathfix_capture_v41_release.csv", runDir);
+              TotalsValue(text, "release_adv_held") == 1 && TotalsValue(text, "release_adv_hold_end") == 3 &&
+              TotalsValue(text, "release_rows") == 14,
+              "T14 release counters: 16 plans (10 with runs, 1 no wide node), 4 applied (1 to the end), 10 vanilla, 1 held, 3 hold ends, 1 no plan, 1 mismatch, 1 other site, 14 rows");
+        CHECK(TotalsValue(text, "release_adv_park") == 1 && TotalsValue(text, "release_adv_park_latched") == 1,
+              "T17 park counters: 1 park release, 1 latched call (park %ld, latched %ld)",
+              TotalsValue(text, "release_adv_park"), TotalsValue(text, "release_adv_park_latched"));
+        sprintf(path, "%spathfix_capture_v42_release.csv", runDir);
         ReadText(path, text, sizeof(text));
         CHECK(strstr(text, "seq,timestamp_ms,thread_id,ctrl,unit,n,node,t,cursor_arc,path_end,nodes,max_width,narrow_runs,run,run_start,run_end,depth,D,D_new,P,A,applied,to_end,reason") != nullptr,
               "T15 release.csv header");
@@ -2009,6 +2161,9 @@ int main(int argc, char** argv) {
         // G9: cursor 7.2 m into node 5, path end 76 from there, P 18.2, held at A 19.85, D 11 -> 12.65
         CHECK(strstr(text, ",0.9000,7.20,76.00,5,36.00,1,-1,0.00,0.00,0.85,11.000,12.650,18.20,19.85,2,0,hold") != nullptr,
               "T16 release.csv: the G9 hold row (P 18.2 -> A 19.85, applied 2, reason hold)");
+        // PR3: cursor 7 m into node 5, path end 20, D 11 -> 13.5, P 18, A 20.5, applied 3, to the end, reason park
+        CHECK(strstr(text, ",0.3500,7.00,20.00,1,36.00,0,-1,0.00,0.00,0.85,11.000,13.500,18.00,20.50,3,1,park") != nullptr,
+              "T18 release.csv: the PR3 park row (13 m left, D 11 -> 13.5, front 0.5 m past the end, reason park)");
     }
     printf("RESULT %d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 4 : 0;

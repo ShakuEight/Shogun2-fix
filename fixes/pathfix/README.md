@@ -7,8 +7,8 @@ corners on wider lines.
 
 | Build | Where | What |
 |---|---|---|
-| **Public release 1.0** | `release\Shogun2-PathFix-1.0\` at the repository root, built by `release.bat` | Variant G always on. No keys, log, recording or crash handler, and only the five hooks G needs. Copy in to install, delete to uninstall. See section 7 |
-| **Dev build v41** | `build\dinput8.dll`, built by `build.bat` | I toggles G. Capture with `PATHFIX_CAPTURE=1`. Sections 1 to 6 describe it unless stated otherwise |
+| **Public release 1.0.1** | `release\Shogun2-PathFix-1.0.1\` at the repository root, built by `release.bat` | Variant G with the park release, always on. No keys, log, recording or crash handler, and only the five hooks G needs. Copy in to install, delete to uninstall. See section 7 |
+| **Dev build v42** | `build\dinput8.dll`, built by `build.bat` | I toggles G, P starts and stops a recording. Sections 1 to 6 describe it unless stated otherwise |
 
 How the fix was found is in [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -95,24 +95,30 @@ Windows locks a loaded DLL, and replacing it under a running game corrupts the i
 **Uninstall:** delete `dinput8.dll` from the game folder.
 
 **In battle:** press **I** to switch the path fix on (one high tone) or off (one low tone), as
-often as you like. The key only counts while the game window has the focus. O and P do
-nothing in normal play.
+often as you like. The key only counts while the game window has the focus.
 
 **Log.** Each launch rewrites `<game>\pathfix_log.txt`, a few kilobytes: install checks, key
-presses, self-check failures. Nothing else is recorded. If the game crashes, `crash.dmp` is
-written next to the log.
+presses, self-check failures. Every line starts with the local time `[hh:mm:ss.mmm]`. If the
+game crashes, `crash.dmp` is written next to the log (into the recording folder while a
+recording is on).
 
-**Capture mode, for development.** If the game is started with the environment variable
-`PATHFIX_CAPTURE=1`, the v40 recording comes back:
+**Recording (v42).** Press **P** to start a recording (three rising notes) and P again to stop it
+(three falling notes), as often as you like in one session:
 
-- each launch writes into its own folder `<game>\pathfix_runs\<YYYYMMDD_HHMMSS>\`;
-- the capture window opens at the first hook hit and lasts 900 s, with files flushed every 10 s;
-- an 8-minute battle writes about 220 MB;
-- O puts a marker into the capture and P ends it.
+- each recording writes into its own folder `<game>\pathfix_runs\<YYYYMMDD_HHMMSS>\`: the CSV
+  files of section 3.9 and a `pathfix_log.txt` that copies the session log while it runs;
+- `timestamp_ms` 0 is the P press, whose local time heads the folder's log;
+- files are flushed every 10 s and closed at the second P, or when the game closes;
+- the buffers (about 220 MB) are allocated at the first P and reused; soldier rows fill first,
+  after a few minutes of movement;
+- O puts a marker into the running recording; three long low tones on P mean it was refused.
 
-The offline harness uses this mode. It is kept for later work on other fixes.
 `python tools\runs\collect_runs.py` copies new run folders into `fixes\pathfix\data\runs\`, never
 overwriting.
+
+**Capture mode, for the harness.** With the environment variable `PATHFIX_CAPTURE=1` the v40
+capture runs instead: one run folder per launch, a 900 s window from the first hook hit, O
+marker and P finish.
 
 **Safety.** If anything about the game binary differs from the analysed one, the build installs
 nothing and says so in the log. If a self-check fails at run time, the fix switches itself off
@@ -240,6 +246,27 @@ which every man gets a formation move instead of a go-to order. Formation moves 
 pathfind, so a unit sent just past a choke pushed straight into the wall. The anchor therefore
 stops 2 m before the end, and the game's own release still happens when the leader arrives.
 
+**Park release** (v42). How a unit finishes an order, decoded from the game: every laying call
+re-orders only men who are not yet ready; a man on a go-to order is ready once he is in his slot,
+a man on a formation move as soon as he has his order; when every man is ready the move
+behaviour is popped and a shift-queued order starts. The unit cursor is the leader's projection
+on the path. The anchor can put the leader's slot short of the path end. He arrives, is ready,
+is never re-ordered, so the cursor stops and `cursor + D` never reaches the end: the game's
+release (front at the end, formation moves to the destination layout) never comes. With several
+units stacked on one spot, go-to men that cannot reach occupied slots then keep the unit from
+ever finishing. The rule:
+
+```
+if an anchor was applied on this path, the leader has arrived (s+0x384 == 1, s+0x308 == 1),
+   no narrow run lies ahead, the front is short of the end and
+   path end - cursor <= D + block depth + 3 m:
+    D = path end - cursor + 0.5 m              (the game's own release)
+    latched: the same on every later laying call until a new order or a new path
+```
+
+The cap keeps the release to the distance the anchor moved the leader ahead of the game's own
+creep, so formation moves (which do not pathfind) never cover a long stretch.
+
 ### 3.7 Game clock
 
 All fix time windows run on the game's tick counter, read at `[[ctrl+0x14]+8]+0x50` in
@@ -263,10 +290,11 @@ speed and are kept at those values, which is 3.6 game seconds per wall second.
 
 ### 3.9 Capture files
 
-Capture mode only. Written into the run folder as `pathfix_capture_v41_<name>.csv` (runs
-recorded with v40 use the `v40` prefix). Without capture mode none of the buffers is
-allocated, and every recording path stops at one gate that never opens. The fix code runs
-before that gate in every handler, so G behaves the same with and without recording. Columns are documented in the
+Written into the run folder as `pathfix_capture_v42_<name>.csv` (runs recorded with v40 / v41
+use those prefixes). Without a recording none of the buffers is allocated, and every recording
+path stops at one gate that is open only between the two P presses (or for the capture window
+in capture mode). The fix code runs before that gate in every handler, so G behaves the same
+with and without recording. Columns are documented in the
 local research log (`docs/research/capture_format_v17.md` and the later section headers of
 `ghidra_analysis_v12.md`), which is not in the public repository.
 
@@ -297,13 +325,16 @@ cmd /c test.bat       -> offline harness, six runs
 maps the real DLL, loads the proxy, and drives the hooks through the game's own helper functions
 on fake soldiers, portals and path nodes. It passes when:
 
-- the full run passes 124 of 124 checks, twice. It runs in capture mode, selects C and RC
+- the full run passes 134 of 134 checks, twice. It runs in capture mode, selects C and RC
   through a harness-only export to check G's parts on their own, and switches G with the
-  real I key;
+  real I key. The park release scenario (PR1 to PR7, T17, T18) is part of it;
 - the geometry-disable run passes 32 of 32;
-- the play run passes 18 of 18. It runs without capture mode: G acts on I, P and O are ignored,
-  and no run folder or CSV file is written;
+- the play run passes 18 of 18. It runs without capture mode: G acts on I, O alone is ignored,
+  and without P no run folder or CSV file is written;
 - the key run passes 9 of 9: after P ends a capture, I still switches G on and off;
+- the recording run passes 18 of 18: P on / off twice gives two folders, the second starting
+  empty, each with its own log; a recording still on when the game closes is written; log
+  lines carry the local time;
 - the crash run dies on a deliberate access violation and leaves `crash.dmp` in its run folder.
 
 CMake options: `FIX_PATHFIX` (default ON) and `BUILD_TESTS` (default ON).
@@ -317,7 +348,7 @@ reference it uses are shared with the other fixes and live at the repository roo
 
 | Path | Content |
 |---|---|
-| `src/pathfix.cpp` | Dev build v41: the whole fix and its capture, which is active only with `PATHFIX_CAPTURE=1`. The header comment keeps every version's notes back to v37 |
+| `src/pathfix.cpp` | Dev build v42: the whole fix and its recording (P toggled, or the capture mode with `PATHFIX_CAPTURE=1`). The header comment keeps every version's notes back to v37 |
 | `src/stack_offsets_v16.h`, `_v17.h`, `_v34.h` | Hook context offsets generated by `tools/re/stack_calc.py` |
 | `release/pathfix_release.cpp` | The public release: variant G always on, five hooks, nothing else |
 | `release/version.rc`, `release/README.txt` | Version resource and the readme for players |
@@ -340,9 +371,12 @@ reference it uses are shared with the other fixes and live at the repository roo
   28 of them slowed below 0.3 m/s for 0.6 s.
 - **Validated at 3x game speed only.** The time windows are game-clocked, so other speeds should
   behave the same, but that is not measured.
-- **v41 is checked offline only.** Its variant G is v40's, unchanged and measured in battle.
-  The new key handling and the absence of recording have passed the harness, but have not yet
-  been played.
+- **v42's park release has little in-game data.** It was designed from two recorded replays
+  (runs 20261017_104106 and 114804) in which G left units "not finished" at a shared
+  destination, so a shift-queued order never started; the harness confirms the rule and the
+  user accepted it in game, but no recording of the fixed replay has been analysed. A leader parked with more than D + block depth + 3 m of path left
+  is deliberately not released early (formation moves do not pathfind), so such a unit can
+  still finish short of its destination layout.
 - **Original 32-bit game only, single player only.**
 
 ---
@@ -359,25 +393,25 @@ reference it uses are shared with the other fixes and live at the repository roo
    root with `dinput8.dll`, `README.txt`, `SHA256.txt`, `LICENSE` and `NOTICE`, and zips it. An older package of the same version is moved to
    `release\_previous\`.
 
-| | Dev build v41 | Public release 1.0 |
+| | Dev build v42 | Public release 1.0.1 |
 |---|---|---|
 | Source | `fixes/pathfix/src/pathfix.cpp` | `fixes/pathfix/release/pathfix_release.cpp` |
 | Fix | off at launch, I toggles G | G always on |
 | Hooks | 17 | 5: orders, waypoint, integrator, radius request, advance |
-| Log, capture, keys, tones, crash dump, test exports | yes | none |
+| Log, recording, keys, tones, crash dump, test exports | yes | none |
 | Exports | DirectInput + 4 test exports | DirectInput only |
 | Size | about 250 KB | 120 KB |
 | Self-checks | install byte checks, run-time checks with an alarm | the same checks, silent: the fix switches itself off |
 
 The release source is the dev build's mode-G code path with everything else removed. The
 logger compiles to nothing (`PATHFIX_NO_LOG`), and the version resource reads "Shogun 2 Path
-Fix 1.0.0.0".
+Fix 1.0.1.0". 1.0.1 adds the park release of dev v42.
 
 **Equivalence test.** The harness mode `release` runs the same scenarios twice: lead the turn,
 the side-object robustness cases, no crowd damping, radius lanes, release beyond the choke, the
 frame self-check and unloading. The first run uses the dev DLL switched to G through its test
-export, the reference with 71 checks. The second uses the release DLL, with those 71 plus 7
-release-only checks. The release-only checks confirm:
+export, the reference with 79 checks (71 in 1.0; the park release scenario added 8). The second
+uses the release DLL, with those 79 plus 7 release-only checks. The release-only checks confirm:
 
 - there are no test exports;
 - exactly the five G hooks are patched and none of the twelve capture-only functions;
@@ -386,19 +420,20 @@ release-only checks. The release-only checks confirm:
 The runner then requires every reference result line, with its computed waypoints, radii and
 cursor positions, to appear unchanged in the release run.
 
-The release has passed these offline tests but has not been played yet. Its fix code is the dev
-build's, and the dev build's variant G was measured in battle.
+The release has passed these offline tests but has not been played itself. Its fix code is the
+dev build's, and the dev build's variant G was measured in battle (the park release of v42 was
+accepted in game without a recorded run).
 
 ---
 
 ## 8. Analysing capture runs
 
-Runs exist only when the game was started with `PATHFIX_CAPTURE=1`. The analysis scripts below
+Runs are the folders of P recordings (v42) or of capture mode. The analysis scripts below
 are in the local `analysis/` folder, which is not in the public repository.
 
 ```
 python tools\runs\collect_runs.py
-set PATHFIX_RUN=E:\_SHOGUN\pathfix\fixes\pathfix\data\runs\<stamp>
+set PATHFIX_RUN=E:\_SHOGUN\Shogun2_fixes\fixes\pathfix\data\runs\<stamp>
 set PATHFIX_UNIT=<unit from pathfix_capture_v4x_units.csv>
 set PATHFIX_CTRL=<its first_ctrl>
 python fixes\pathfix\analysis\v40_pass_table.py      per-pass form-up, stuck men, knot
