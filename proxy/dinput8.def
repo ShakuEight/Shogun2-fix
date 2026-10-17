@@ -1,0 +1,8 @@
+; dinput8.def -- Export definitions for dinput8 proxy
+LIBRARY dinput8
+EXPORTS
+    DirectInput8Create
+    DllCanUnloadNow        PRIVATE
+    DllGetClassObject      PRIVATE
+    DllRegisterServer      PRIVATE
+    DllUnregisterServer    PRIVATE

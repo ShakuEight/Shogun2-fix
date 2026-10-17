@@ -1,0 +1,35 @@
+// Version resource of the public release DLL (shown in the file's Properties > Details).
+#include <winver.h>
+
+#define PF_VER        1,0,0,0
+#define PF_VER_STR    "1.0.0.0"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION    PF_VER
+ PRODUCTVERSION PF_VER
+ FILEFLAGSMASK  0x3fL
+ FILEFLAGS      0x0L
+ FILEOS         VOS_NT_WINDOWS32
+ FILETYPE       VFT_DLL
+ FILESUBTYPE    VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "FileDescription",  "Shogun 2 Path Fix (dinput8 proxy; units keep formation through gates and corners)"
+            VALUE "FileVersion",      PF_VER_STR
+            VALUE "InternalName",     "dinput8"
+            VALUE "OriginalFilename", "dinput8.dll"
+            VALUE "ProductName",      "Shogun 2 Path Fix"
+            VALUE "ProductVersion",   PF_VER_STR
+            VALUE "Comments",         "Unofficial fix for Total War: Shogun 2 (original 32-bit release). Single player only. Delete the file to uninstall."
+            VALUE "CompanyName",      "ShakuEight"
+            VALUE "LegalCopyright",   "Copyright 2026 ShakuEight. Licensed under the Apache License 2.0."
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

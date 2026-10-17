@@ -1,0 +1,48 @@
+# build output
+/build/
+*.obj
+*.exp
+*.lib
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.dmp
+
+# captures and logs: gigabytes, kept on disk only (data/runs is filled by tools/runs/collect_runs.py)
+/data/
+/fixes/*/data/
+/logs/
+
+# local only: earlier builds, the research log, run analysis and offline models. The public
+# repository holds the current dev build and the public release of each fix.
+/fixes/*/archive/
+/fixes/*/analysis/
+/fixes/*/sim/
+/fixes/*/docs/research/
+
+# python
+__pycache__/
+*.pyc
+# per-run caches written by the analysis loaders next to the run data
+*.npz
+
+# public release: its own build tree and the packaged output
+/build_release/
+/release/
+
+# Never published: Ghidra databases, decompiled function bodies, disassembly listings and other
+# data dumped from the game binary. They stay on disk for local work (tools/ghidra regenerates them).
+*.gpr
+*.rep/
+*.gzf
+*.lock
+*.lock~
+/docs/re/walk_decompiles/
+/docs/re/x64_decompiles/
+/docs/re/anchor_decompiles/
+/docs/re/listings/
+/docs/re/prologues_*.txt
+/docs/re/*.csv
+# full originals of documents whose quoted game code was redacted for the public repository
+/private/
