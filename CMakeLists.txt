@@ -21,6 +21,7 @@ option(PUBLIC_RELEASE "Build the public release DLL: release sources only, no lo
 option(BUILD_TESTS "Build the offline harness executables (dev build only)" ON)
 option(FIX_PATHFIX "Path fix: units keep formation through gates, doorways and corners (fixes/pathfix)" ON)
 option(FIX_ARTILLERY_TARGETING "Artillery targeting fix: artillery aims at the middle of the target unit (fixes/artillery-targeting-fix)" ON)
+option(FIX_FIRE_BY_RANK "Fire-by-rank fix: matchlock target acquisition, fire by rank, Hattori / Ikko Ikki (fixes/fire-by-rank-fix)" ON)
 option(TOOL_AUTORUN "Dev tool: version.dll proxy for unattended replay runs (tools/autorun); ignored with PUBLIC_RELEASE" OFF)
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
@@ -54,6 +55,9 @@ if(FIX_PATHFIX)
 endif()
 if(FIX_ARTILLERY_TARGETING AND NOT PUBLIC_RELEASE)
     include(fixes/artillery-targeting-fix/artillery-targeting-fix.cmake)
+endif()
+if(FIX_FIRE_BY_RANK AND NOT PUBLIC_RELEASE)
+    include(fixes/fire-by-rank-fix/fire-by-rank-fix.cmake)
 endif()
 
 # --- developer tools (separate proxy DLLs, never part of the public release) ---------------

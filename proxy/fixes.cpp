@@ -11,6 +11,10 @@ void Pathfix_Remove();
 void ArtFix_Install();     // fixes/artillery-targeting-fix/src/artfix.cpp
 void ArtFix_Remove();
 #endif
+#ifdef FIX_FIRE_BY_RANK
+void FbrFix_Install();     // fixes/fire-by-rank-fix/src/fbrfix.cpp
+void FbrFix_Remove();
+#endif
 
 static const FixModule kFixes[] = {
 #ifdef FIX_PATHFIX
@@ -18,6 +22,9 @@ static const FixModule kFixes[] = {
 #endif
 #ifdef FIX_ARTILLERY_TARGETING
     { "artillery-targeting-fix", ArtFix_Install, ArtFix_Remove },
+#endif
+#ifdef FIX_FIRE_BY_RANK
+    { "fire-by-rank-fix", FbrFix_Install, FbrFix_Remove },
 #endif
     { nullptr, nullptr, nullptr }
 };

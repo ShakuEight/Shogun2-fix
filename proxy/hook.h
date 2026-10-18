@@ -75,6 +75,31 @@ void Hook_Patch(const HookDetour* detours, HookSlot* slots, int n);
 // Restores the original bytes of every active slot.
 void Hook_Remove(HookSlot* slots, int n);
 
+// Like HOOK_DETOUR, for an ENTRY hook whose handler may answer for the game function: the
+// handler returns HOOK_CONTINUE (0) to run the function as usual, or HOOK_RETURN(value) to
+// return to the caller at once with EAX = value and `popBytes` of stack arguments removed
+// (the function's own RET N). Only for entry hooks: nothing of the function has run yet.
+#define HOOK_CONTINUE 0u
+#define HOOK_RETURN(value) (0x80000000u | ((uint32_t)(value) & 0x7FFFFFFFu))
+#define HOOK_DETOUR_RET(name, handler, trampArray, index, popBytes)           \
+    __declspec(naked) void name() {                                           \
+        __asm pushad                                                          \
+        __asm pushfd                                                          \
+        __asm push esp                                                        \
+        __asm call handler                                                    \
+        __asm test eax, eax                                                   \
+        __asm jnz name##_answer                                               \
+        __asm popfd                                                           \
+        __asm popad                                                           \
+        __asm jmp dword ptr [trampArray + ((index) * 4)]                      \
+    __asm name##_answer:                                                      \
+        __asm and eax, 0x7FFFFFFF                                             \
+        __asm mov dword ptr [esp + 0x20], eax                                 \
+        __asm popfd                                                           \
+        __asm popad                                                           \
+        __asm ret popBytes                                                    \
+    }
+
 // Naked detour `name` for a __stdcall handler(const uint8_t* ctx); jumps through trampArray[index].
 // The sequence must match the stack_calc.py header the handler reads its offsets from.
 #define HOOK_DETOUR(name, handler, trampArray, index)                         \

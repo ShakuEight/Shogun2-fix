@@ -89,8 +89,13 @@ release 1.0, is in `fixes/pathfix/CLAUDE.md`. Shared engine knowledge goes here 
   2026-10-08, image base 0x180000000; see `docs/re/inventory.md`).
 - Ghidra 12.0.3: `E:\_SHOGUN\ghidra_12.0.3_PUBLIC_20260210\`, projects in
   `E:\_SHOGUN\GHIDRA\`
-- Loose analysis files from earlier phases live in `E:\_SHOGUN\` root
-  (analyze_capture.py, path.csv, width_verification.txt, loaded_dlls.txt).
+- RPFM 4.7.100 CLI: `E:\_SHOGUN\_rpfm\rpfm_cli.exe -g shogun_2`, schema
+  `E:\_SHOGUN\_rpfm\schemas\schema_sho2.ron` (restored from the Recycle Bin 2026-10-18; the GUI
+  and the rest of the old `_rpfm` folder are still there). Tables as TSV:
+  `pack extract -p <pack> -t <schema> -f "<path in pack>;<out dir>"`; example script
+  `fixes/fire-by-rank-fix/analysis/extract_db.py` (local).
+- The loose analysis files of earlier phases (analyze_capture.py, path.csv, ...) are no longer
+  in `E:\_SHOGUN\` (analyze_capture.py is in the Recycle Bin); `rpfm_agent.py` still is.
 - User data / replays: `%APPDATA%\The Creative Assembly\Shogun2\` (CE may use
   a different folder; check after first launch).
 
@@ -126,7 +131,10 @@ from the x64 decompile.
 - CMake + NMake (MSVC), 32-bit build for the original; a Complete Edition
   target needs a separate x64 configuration and MinHook/Detours instead of
   hand-rolled trampolines (RIP-relative stolen bytes).
-- RPFM for pack files; rpfm_agent.py + Ollama for local-LLM middleware.
+- RPFM for pack files (CLI path under Paths); rpfm_agent.py + Ollama for local-LLM middleware.
+- Battle state machines: one runner `FUN_11374cf0` for all of them; state names come from each
+  state's vtable slot +0x10 (docs/re/missile_fire_x86.md). A transition hook there is the
+  cheapest way to watch any behaviour (fire-by-rank-fix probe).
 - hooks.cpp v8b + analyze_capture.py: binary ring-buffer capture pipeline.
 
 ## Hard-won findings (do not re-learn these)
