@@ -7,9 +7,11 @@ addresses inside the stolen bytes are compared as stored on disk (image base
 
     python tools/check_prologues.py [path to empire.retail.dll]
 
-The hook list below is the v17 table (src/hooks_v17.cpp, docs/prologues_v17.txt):
-the thirteen v16 entry hooks plus the mid-function patch at RVA 0x3DF6C0
-(FUN_103df3f0, the instruction after CALL FUN_10394e80).
+The list below holds every patch site of every fix compiled into the DLL (pathfix,
+artillery-targeting-fix, fire-by-rank-fix, siege-responsiveness-fix): entry and mid-function
+hooks, functions a fix calls directly, and [imm32 patch] instructions whose immediate a fix
+rewrites. After the byte check the script fails when two sites share a byte, because
+the fixes must never patch the same code.
 """
 import struct
 import sys
@@ -32,6 +34,8 @@ HOOKS = [
     ("FUN_103dafb0", 0x3DAFB0, "56 8B F1 8B 46 28"),
     ("FUN_103df3f0+0x2D0", 0x3DF6C0, "80 BB 71 04 00 00 01"),
     ("FUN_10367600", 0x367600, "55 8B EC 83 E4 F0"),   # v24 integrator entry (docs/prologues_v24.txt)
+    ("FUN_103df3f0+0xE1", 0x3DF4D1, "80 7C 24 0F 01"),  # v34 replan request radius (in the dev and public DLL)
+    ("FUN_103670a0", 0x3670A0, "83 EC 10 56 57"),       # v38 cursor advance (in the dev and public DLL)
     # artillery-targeting-fix, was aimfix (docs/re/prologues_aimfix.txt): the fix hook, then the two probe-only hooks
     ("FUN_1047fd90", 0x47FD90, "53 56 8B F1 80 7E 7C 00"),
     ("FUN_103a6850", 0x3A6850, "83 EC 0C 56 8B F1"),
@@ -47,6 +51,18 @@ HOOKS = [
     ("FUN_11374cf0+0x1B", 0x1374D0B, "89 7E 04 8B CF"),
     ("FUN_103db8f0", 0x3DB8F0, "53 56 57 8B F9"),
     ("FUN_103db740", 0x3DB740, "53 56 57 8B F9"),
+    # siege-responsiveness-fix (docs/re/prologues_siegefix.txt): the query hook (the fix), the five
+    # probe-only hooks, then the two [imm32 patch] compares (whole CMP + JAE checked, only the
+    # immediate at +6 is written)
+    ("FUN_10385fd0", 0x385FD0, "83 EC 40 53 55"),
+    ("FUN_103aac30", 0x3AAC30, "81 EC 9C 00 00 00"),
+    ("FUN_103aac30+0x1E8", 0x3AAE18, "8B BE 78 01 00 00"),
+    ("FUN_1039a500", 0x39A500, "83 EC 40 53 55"),
+    ("FUN_103aac30+0x28B", 0x3AAEBB, "88 47 21 C6 47 20 01"),
+    ("FUN_103aac30+0x2D3", 0x3AAF03, "8B 86 8C 01 00 00"),
+    ("FUN_1035fb40", 0x35FB40, "8B 44 24 04 56"),
+    ("FUN_103aac30+0x274", 0x3AAEA4, "81 BE 70 04 00 00 F4 01 00 00 73 53"),   # [imm32 patch] node budget 500
+    ("FUN_103aac30+0x91", 0x3AACC1, "81 BE 68 03 00 00 C8 00 00 00 0F 83"),    # [imm32 patch] incremental cap 200
 ]
 
 
@@ -89,7 +105,15 @@ def main():
             name, rva, s[0], fo, "MATCH" if ok else "DIFFER",
             "" if ok else "  got " + got.hex(" ").upper()))
     print("all %d MATCH" % len(HOOKS) if not bad else "%d DIFFER" % bad)
-    return 1 if bad else 0
+    # every fix compiles into one DLL: no two sites may share a byte
+    spans = sorted((rva, rva + len(bytes.fromhex(h)), name) for name, rva, h in HOOKS)
+    overlaps = 0
+    for (a0, a1, an), (b0, b1, bn) in zip(spans, spans[1:]):
+        if b0 < a1:
+            overlaps += 1
+            print("OVERLAP %s RVA 0x%06X..0x%06X and %s RVA 0x%06X" % (an, a0, a1, bn, b0))
+    print("no overlapping sites" if not overlaps else "%d OVERLAPPING SITES" % overlaps)
+    return 1 if bad or overlaps else 0
 
 
 if __name__ == "__main__":

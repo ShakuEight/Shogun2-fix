@@ -15,6 +15,10 @@ void ArtFix_Remove();
 void FbrFix_Install();     // fixes/fire-by-rank-fix/src/fbrfix.cpp
 void FbrFix_Remove();
 #endif
+#ifdef FIX_SIEGE_RESPONSIVENESS
+void SiegeFix_Install();   // fixes/siege-responsiveness-fix/src/siegefix.cpp
+void SiegeFix_Remove();
+#endif
 
 static const FixModule kFixes[] = {
 #ifdef FIX_PATHFIX
@@ -25,6 +29,9 @@ static const FixModule kFixes[] = {
 #endif
 #ifdef FIX_FIRE_BY_RANK
     { "fire-by-rank-fix", FbrFix_Install, FbrFix_Remove },
+#endif
+#ifdef FIX_SIEGE_RESPONSIVENESS
+    { "siege-responsiveness-fix", SiegeFix_Install, SiegeFix_Remove },
 #endif
     { nullptr, nullptr, nullptr }
 };

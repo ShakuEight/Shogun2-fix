@@ -2,7 +2,7 @@
 //
 // Rules (fixes/README.md): letter keys only, never F-keys, and a real key counts only while a
 // window of the game process has the focus (GetAsyncKeyState also sees keys typed into other
-// programs). Keys taken: pathfix I / O / P, artillery-targeting-fix U, fire-by-rank-fix Y.
+// programs). Keys taken: pathfix I / O / P, artillery-targeting-fix U, fire-by-rank-fix Y, siege-responsiveness-fix J.
 //
 // Two ways to use them:
 //   - a fix with its own polling loop calls Keys_RealDown / Keys_Edge (pathfix's dump thread);

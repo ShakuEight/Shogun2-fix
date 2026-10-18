@@ -9,6 +9,7 @@ own folder. Install by copying it in, uninstall by deleting it.
 | [**pathfix**](fixes/pathfix/README.md) | Units ordered through gates, doorways and round corners stop in a stretched block and file through one man at a time | Public release 1.0 |
 | [**artillery-targeting-fix**](fixes/artillery-targeting-fix/README.md) | Artillery ordered to fire at a unit aims at the end of the enemy line instead of its middle | Dev build |
 | [**fire-by-rank-fix**](fixes/fire-by-rank-fix/README.md) | Matchlock units with Fire by Rank wait about 10 s before their first volley; the Hattori and Ikko Ikki gun units stop firing and reloading after three volleys; ranks beyond the third never fire, a man who has fired waits for his whole rank before he reloads, one reloader holds his rank | Dev build |
+| [**siege-responsiveness-fix**](fixes/siege-responsiveness-fix/README.md) | In large sieges, once the attackers climb the walls, the defender's units answer move orders late or not at all: units on the wall take long to leave it, units sent onto it take long to get there | Dev build |
 
 ## For players
 
@@ -64,6 +65,7 @@ fixes/
   pathfix/          the path fix: dev build v42, public release source, harness, docs
   artillery-targeting-fix/  the artillery targeting fix (artfix, was aimfix): dev build, harness, docs (no release source yet)
   fire-by-rank-fix/ the fire-by-rank fix (fbrfix): dev build, harness, docs (no release source yet)
+  siege-responsiveness-fix/ the siege responsiveness fix (siegefix): dev build, harness, docs (no release source yet)
 docs/re/            what is known about Empire.Retail.dll, shared by all fixes: function
                     maps x86 to x64 and engine decodes (Ghidra output stays local)
 tools/

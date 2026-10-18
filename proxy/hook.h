@@ -75,6 +75,11 @@ void Hook_Patch(const HookDetour* detours, HookSlot* slots, int n);
 // Restores the original bytes of every active slot.
 void Hook_Remove(HookSlot* slots, int n);
 
+// Writes n bytes of code at `at` (page protection lifted for the write, instruction cache
+// flushed). For data patches inside an instruction, such as an immediate operand, after the
+// caller has byte-checked the whole instruction. False when the protection cannot be changed.
+bool Hook_WriteCode(uint8_t* at, const void* bytes, int n);
+
 // Like HOOK_DETOUR, for an ENTRY hook whose handler may answer for the game function: the
 // handler returns HOOK_CONTINUE (0) to run the function as usual, or HOOK_RETURN(value) to
 // return to the caller at once with EAX = value and `popBytes` of stack arguments removed

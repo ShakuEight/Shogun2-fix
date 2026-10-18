@@ -110,3 +110,12 @@ void Hook_Remove(HookSlot* slots, int n) {
         slots[h].active = false;
     }
 }
+
+bool Hook_WriteCode(uint8_t* at, const void* bytes, int n) {
+    DWORD old;
+    if (!VirtualProtect(at, (SIZE_T)n, PAGE_EXECUTE_READWRITE, &old)) return false;
+    memcpy(at, bytes, (size_t)n);
+    VirtualProtect(at, (SIZE_T)n, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), at, (SIZE_T)n);
+    return true;
+}
