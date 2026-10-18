@@ -58,6 +58,15 @@ Each folder here is one game fix compiled into the same `dinput8.dll`:
   the generated header in the fix's `src/`. Never calculate them by hand.
 - **Self-check at run time** and switch the fix off for the session on failure, audibly.
 - **Keys:** letter keys only, never F-keys, and only while the game window has the focus.
+- **One toggle key and one sound for every fix (user decision, 2026-10-18).** Going forward every
+  fix toggles on / off with **I** and plays pathfix's cues: one high tone (880 Hz, 160 ms) = on,
+  one low tone (330 Hz, 300 ms) = off, three long low tones (200 Hz, 450 ms each) = refused or
+  switched off by a self-check. Reason: in dev only one fix is under test at a time (the others
+  are off by their `<FIX>_OFF=1` variable), and the public release has no keys at all, since all
+  fixes are on together. Pathfix already works this way. Artillery-targeting-fix (U),
+  fire-by-rank-fix (Y) and siege-responsiveness-fix (J) still use their own letter and
+  `MessageBeep`; move each to I and the tones above the next time it is changed. A fix that
+  needs a second dev key takes a free letter for that only (pathfix keeps O and P).
 - **Single player only.** Anything that changes simulation desyncs multiplayer.
 - **Nothing from the game in git.** Never commit Ghidra databases, decompiled function bodies,
   disassembly listings, prologue or memory dumps, or other data extracted from the game. Notes

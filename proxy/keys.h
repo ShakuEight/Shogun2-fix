@@ -2,7 +2,10 @@
 //
 // Rules (fixes/README.md): letter keys only, never F-keys, and a real key counts only while a
 // window of the game process has the focus (GetAsyncKeyState also sees keys typed into other
-// programs). Keys taken: pathfix I / O / P, artillery-targeting-fix U, fire-by-rank-fix Y, siege-responsiveness-fix J.
+// programs). Every fix toggles with I and plays pathfix's tones (one high = on, one low = off,
+// three long low = refused); see fixes/README.md, "One toggle key and one sound for every fix".
+// Still on their old letters until next changed: artillery-targeting-fix U, fire-by-rank-fix Y,
+// siege-responsiveness-fix J. Pathfix's extra keys: O, P.
 //
 // Two ways to use them:
 //   - a fix with its own polling loop calls Keys_RealDown / Keys_Edge (pathfix's dump thread);

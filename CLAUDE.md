@@ -25,6 +25,9 @@ release 1.0, is in `fixes/pathfix/CLAUDE.md`. Shared engine knowledge goes here 
 
 ## Session rules (mandatory)
 
+- Dev toggle key and sound: every fix uses I and pathfix's tones (one high = on, one low = off,
+  three long low = refused). Only one fix is tested at a time in dev; the release has no keys.
+  Details and the fixes not yet moved: `fixes/README.md`, "Rules every fix follows".
 - Never overwrite an existing file blind. Before creating a file, `ls` the
   target path. On collision: write to `<name>_tmp`, `mv <old> <old>.bak`,
   `mv <tmp> <target>`. Never rm-then-regenerate.
