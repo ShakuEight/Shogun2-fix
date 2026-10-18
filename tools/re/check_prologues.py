@@ -8,7 +8,7 @@ addresses inside the stolen bytes are compared as stored on disk (image base
     python tools/check_prologues.py [path to empire.retail.dll]
 
 The list below holds every patch site of every fix compiled into the DLL (pathfix,
-artillery-targeting-fix, fire-by-rank-fix, siege-responsiveness-fix): entry and mid-function
+artillery-targeting-fix, fire-by-rank-fix, siege-responsiveness-fix, wall-manning-fix): entry and mid-function
 hooks, functions a fix calls directly, and [imm32 patch] instructions whose immediate a fix
 rewrites. After the byte check the script fails when two sites share a byte, because
 the fixes must never patch the same code.
@@ -63,6 +63,18 @@ HOOKS = [
     ("FUN_1035fb40", 0x35FB40, "8B 44 24 04 56"),
     ("FUN_103aac30+0x274", 0x3AAEA4, "81 BE 70 04 00 00 F4 01 00 00 73 53"),   # [imm32 patch] node budget 500
     ("FUN_103aac30+0x91", 0x3AACC1, "81 BE 68 03 00 00 C8 00 00 00 0F 83"),    # [imm32 patch] incremental cap 200
+    # wall-manning-fix (docs/re/prologues_wallfix*.txt): the probe-only hooks, then the fix hook
+    ("FUN_10254e80", 0x254E80, "56 8B 74 24 08"),
+    ("FUN_103db410", 0x3DB410, "56 8B F1 8B 46 04"),
+    ("FUN_103e1250", 0x3E1250, "83 EC 18 57 8B F9"),
+    ("FUN_101a53f0", 0x1A53F0, "83 EC 14 57 8B F9"),
+    ("FUN_101a5500", 0x1A5500, "83 EC 18 53 55"),
+    ("FUN_101a5600", 0x1A5600, "83 EC 14 53 56"),
+    ("FUN_101a56e0", 0x1A56E0, "83 EC 18 53 56"),
+    ("FUN_103be5d0", 0x3BE5D0, "53 56 8B 74 24 0C"),
+    ("FUN_103e1780", 0x3E1780, "83 EC 08 56 57"),
+    ("FUN_10386d90", 0x386D90, "83 EC 20 53 8B 5C 24 30"),
+    ("FUN_1016af90", 0x16AF90, "83 EC 18 57 8B F9"),   # the fix: staging test of the wall task
 ]
 
 

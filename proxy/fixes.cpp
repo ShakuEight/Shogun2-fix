@@ -19,6 +19,10 @@ void FbrFix_Remove();
 void SiegeFix_Install();   // fixes/siege-responsiveness-fix/src/siegefix.cpp
 void SiegeFix_Remove();
 #endif
+#ifdef FIX_WALL_MANNING
+void WallFix_Install();    // fixes/wall-manning-fix/src/wallfix.cpp
+void WallFix_Remove();
+#endif
 
 static const FixModule kFixes[] = {
 #ifdef FIX_PATHFIX
@@ -32,6 +36,9 @@ static const FixModule kFixes[] = {
 #endif
 #ifdef FIX_SIEGE_RESPONSIVENESS
     { "siege-responsiveness-fix", SiegeFix_Install, SiegeFix_Remove },
+#endif
+#ifdef FIX_WALL_MANNING
+    { "wall-manning-fix", WallFix_Install, WallFix_Remove },
 #endif
     { nullptr, nullptr, nullptr }
 };

@@ -6227,6 +6227,18 @@ void Pathfix_Install() {   // registered in proxy/fixes.cpp (was InstallHooks in
         g_prevUef, g_miniDump ? "crash.dmp via dbghelp" : "NO dbghelp (no dump)",
         g_faultVeh ? "recorded (last 256)" : "NOT recorded");
 
+    // Unattended runs (tools/autorun --env PATHFIX_ON=1): start with variant G on instead of off,
+    // as one I press would (the other fixes' interaction tests need pathfix on without a key).
+    {
+        char on[8] = "";
+        if (GetEnvironmentVariableA("PATHFIX_ON", on, sizeof(on)) > 0 && on[0] == '1' && !g_fixDisabled) {
+            InterlockedExchange(&g_fixVariant, 3);
+            InterlockedExchange(&g_fixOn, 1);
+            InterlockedExchange(&g_fixMode, FIX_V38_G);
+            Log("PATHFIX_ON=1: path fix ON at launch, variant G (mode %d)", (int)FIX_V38_G);
+        }
+    }
+
     if (g_captureOn) {
         Log("All %d hooks installed. The window opens at the first hit of any hook.", HOOK_COUNT);
         Log("Keys (only while the game has the focus): I path fix on/off (off at launch), O marker, "

@@ -10,6 +10,7 @@ python -I fixes\pathfix\tests\run_tests.py "%GAME_DIR%" || set "FAILED=1"
 python -I fixes\artillery-targeting-fix\tests\run_tests.py "%GAME_DIR%" || set "FAILED=1"
 python -I fixes\fire-by-rank-fix\tests\run_tests.py "%GAME_DIR%" || set "FAILED=1"
 python -I fixes\siege-responsiveness-fix\tests\run_tests.py "%GAME_DIR%" || set "FAILED=1"
+python -I fixes\wall-manning-fix\tests\run_tests.py "%GAME_DIR%" || set "FAILED=1"
 REM dev tools, when built (build.bat -DTOOL_AUTORUN=ON)
 if exist build\autorun_forward_test.exe (
     build\autorun_forward_test.exe "%~dp0build\version.dll" || set "FAILED=1"

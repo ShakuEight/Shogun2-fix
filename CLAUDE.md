@@ -10,6 +10,7 @@ Runtime fixes for Total War: Shogun 2 (the original 32-bit `Empire.Retail.dll`),
 | artillery-targeting-fix (code name artfix, was aimfix): artillery aims at the middle of the target unit | `fixes/artillery-targeting-fix/` | dev build (2026-10-18), no release |
 | fire-by-rank-fix (code name fbrfix): matchlock target acquisition, fire by rank, Hattori / Ikko Ikki reload | `fixes/fire-by-rank-fix/` | dev build (2026-10-18: every rank, front rank first, 75 % quorum, early reload), no release |
 | siege-responsiveness-fix (code name siegefix): defending units answer move orders during wall assaults | `fixes/siege-responsiveness-fix/` | dev build (2026-10-18: queue's own node budget 2000, local player's path requests searched at once), no release |
+| wall-manning-fix (code name wallfix): units ordered onto a wall go straight to their wall positions (no staging march) | `fixes/wall-manning-fix/` | dev build (2026-10-18), no release |
 
 Shared code for all fixes lives in `proxy/` since 2026-10-18: hook engine `hook.h`, guarded
 memory and battle tick `gamemem.h`, keys and tones `keys.h` (dev only). API in `fixes/README.md`.

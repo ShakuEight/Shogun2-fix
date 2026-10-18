@@ -20,6 +20,8 @@ function names and offsets.
 | `re/request_radius_x86.md` | The soldier's replan request radius |
 | `re/artillery_aim_x86.md` | How an artillery piece gets its target: the target record, the engine fire action, the hand-over to the gun, which soldier the game picks |
 | `re/missile_fire_x86.md` | State machines and their runner, the missile attack machine, the group fire task behind fire by rank (groups, waits, the 3-group cap), the sword officer of the Hattori / Ikko Ikki gun units |
+| `re/wall_manning_x86.md` | The man-the-wall order: the wall task's staging test and staging point, the unit move action, the per-man form-up onto the wall positions |
+| `re/path_queue_x86.md` | The pathfinder's request queue and per-tick budgets |
 | `re/console_commands_x86.md` | Startup commands and `user.script.txt`, the `replay` startup mode, the battle phase and the pointer path the autorun tool reads |
 
 Where a note quoted decompiler output or disassembly, the quote is replaced by a marker such as
