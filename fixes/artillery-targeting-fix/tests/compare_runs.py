@@ -1,9 +1,9 @@
-"""Compare aimfix probe runs: where each artillery shot was aimed relative to the target unit.
+"""Compare artfix (artillery targeting fix) probe runs: where each artillery shot was aimed relative to the target unit.
 
     python compare_runs.py <run_dir> [<run_dir> ...]
 
 Reads aim_calls.csv (one row per shot, from the gun's fire routine) and aim_units.csv (soldier
-positions once per game second per target unit) of each run folder written with AIMFIX_PROBE=1.
+positions once per game second per target unit) of each run folder written with ARTFIX_PROBE=1.
 For every shot: distance of the aim point (target soldier) from the unit centroid, and its
 position along the unit's frontage (0 = one end, 0.5 = middle, 1 = other end, from the principal
 axis of the soldier positions). Also the shot count and the target units' strength over time.

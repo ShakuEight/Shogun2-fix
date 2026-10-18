@@ -2,7 +2,7 @@
 
 How an artillery piece chooses where to aim and hands that to its fire routine, in the original
 32-bit `Empire.Retail.dll` (Ghidra names at image base `0x10000000`). Found for the aim fix
-(`fixes/aimfix/`) on 2026-10-18 with a probe DLL, a hardware write watchpoint and replay runs of a
+(`fixes/artillery-targeting-fix/`, named aimfix at the time) on 2026-10-18 with a probe DLL, a hardware write watchpoint and replay runs of a
 Fall of the Samurai battle (3 batteries of 4 Armstrong guns against 3 units of line infantry).
 Everything marked measured was seen live; the rest is read from the decompile.
 

@@ -1,4 +1,4 @@
-// aimtest.cpp -- offline harness for the aimfix hook (fixes/aimfix/src/aimfix.cpp).
+// artfix_test.cpp -- offline harness for the artillery targeting fix (fixes/artillery-targeting-fix/src/artfix.cpp).
 //
 // Maps the real empire.retail.dll (no game process), loads the proxy, and enters the game's own
 // FUN_1047fd90 (engine fire action update) on fake game objects: a fire action with its target
@@ -6,10 +6,10 @@
 // eight stolen bytes ends the call there, so only the hook and the stolen instructions run. The
 // checks read what the hook left in the action's target record.
 //
-//   aimtest <game dll> <proxy> <tag> full|off|selfcheck
+//   artfix_test <game dll> <proxy> <tag> full|off|selfcheck
 //
 //   full       fix on: centre soldier chosen for artillery, everything else left alone; U toggles it
-//   off        AIMFIX_OFF=1: the hook is installed but changes nothing until U switches it on
+//   off        ARTFIX_OFF=1: the hook is installed but changes nothing until U switches it on
 //   selfcheck  20 artillery targets whose unit link is broken switch the fix off for the session (U refused)
 //
 // Output: one PASS / FAIL line per check, then "RESULT <n> passed, <m> failed".
@@ -284,12 +284,12 @@ static void RunSelfcheck() {
 int main(int argc, char** argv) {
     setvbuf(stdout, nullptr, _IONBF, 0);
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
-    if (argc < 5) { printf("usage: aimtest <game dll> <proxy> <tag> full|off|selfcheck\n"); return 2; }
+    if (argc < 5) { printf("usage: artfix_test <game dll> <proxy> <tag> full|off|selfcheck\n"); return 2; }
     const char* mode = argv[4];
     bool off = strcmp(mode, "off") == 0;
     bool selfcheck = strcmp(mode, "selfcheck") == 0;
-    SetEnvironmentVariableA("AIMFIX_OFF", off ? "1" : nullptr);
-    SetEnvironmentVariableA("AIMFIX_PROBE", nullptr);
+    SetEnvironmentVariableA("ARTFIX_OFF", off ? "1" : nullptr);
+    SetEnvironmentVariableA("ARTFIX_PROBE", nullptr);
     SetEnvironmentVariableA("PATHFIX_CAPTURE", nullptr);
 
     HMODULE game = LoadLibraryExA(argv[1], nullptr, DONT_RESOLVE_DLL_REFERENCES);
@@ -308,10 +308,10 @@ int main(int argc, char** argv) {
     HMODULE proxy = LoadLibraryA(argv[2]);
     if (!proxy) { printf("cannot load proxy: %lu\n", GetLastError()); return 1; }
     DI8Create create = (DI8Create)GetProcAddress(proxy, "DirectInput8Create");
-    g_counters = (TestCounters)GetProcAddress(proxy, "_AimfixTestCounters@4");
-    if (!g_counters) g_counters = (TestCounters)GetProcAddress(proxy, "AimfixTestCounters");
-    g_keys = (TestKeys)GetProcAddress(proxy, "_AimfixTestKeys@4");
-    if (!g_keys) g_keys = (TestKeys)GetProcAddress(proxy, "AimfixTestKeys");
+    g_counters = (TestCounters)GetProcAddress(proxy, "_ArtFixTestCounters@4");
+    if (!g_counters) g_counters = (TestCounters)GetProcAddress(proxy, "ArtFixTestCounters");
+    g_keys = (TestKeys)GetProcAddress(proxy, "_ArtFixTestKeys@4");
+    if (!g_keys) g_keys = (TestKeys)GetProcAddress(proxy, "ArtFixTestKeys");
     if (!create || !g_counters || !g_keys) {
         printf("missing export (create %p counters %p keys %p)\n", create, g_counters, g_keys);
         return 1;
@@ -328,7 +328,7 @@ int main(int argc, char** argv) {
     bool intoProxy = (uintptr_t)dest >= (uintptr_t)proxy && (uintptr_t)dest < (uintptr_t)proxy + 0x100000;
     CHECK(site[0] == 0xE9 && site[5] == 0x90 && site[6] == 0x90 && site[7] == 0x90 && intoProxy,
           "I1 FUN_1047fd90 entry patched: JMP into the proxy + 3 NOPs");
-    CHECK(g_base[0x3A6850] == 0x83 && g_base[0x45A8A0] == 0xF3, "I2 probe hooks not installed without AIMFIX_PROBE");
+    CHECK(g_base[0x3A6850] == 0x83 && g_base[0x45A8A0] == 0xF3, "I2 probe hooks not installed without ARTFIX_PROBE");
     g_update = (ActionUpdate)(void*)site;
 
     if (selfcheck) RunSelfcheck();

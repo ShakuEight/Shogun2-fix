@@ -5,7 +5,8 @@ Each folder here is one game fix compiled into the same `dinput8.dll`:
 | Fix | Entry points | CMake option |
 |---|---|---|
 | `pathfix/` | `Pathfix_Install`, `Pathfix_Remove` | `FIX_PATHFIX` |
-| `aimfix/` | `Aimfix_Install`, `Aimfix_Remove` | `FIX_AIMFIX` (dev build only so far) |
+| `artillery-targeting-fix/` (artfix, was aimfix) | `ArtFix_Install`, `ArtFix_Remove` | `FIX_ARTILLERY_TARGETING` (dev build only so far) |
+| `fire-by-rank-fix/` (fbrfix) | `FbrFix_Install`, `FbrFix_Remove` | `FIX_FIRE_BY_RANK` (dev build only so far) |
 
 ## Adding a fix
 
@@ -67,19 +68,24 @@ Each folder here is one game fix compiled into the same `dinput8.dll`:
 - **Authorship.** Commits are by `ShakuEight <247325717+ShakuEight@users.noreply.github.com>`;
   no personal email address or local user name in commits or files.
 
-## Shared infrastructure that still lives inside pathfix
+## Shared infrastructure in proxy/
 
-`pathfix.cpp` was grown as one file and still owns code that a second fix will need. Move it into
-`proxy/` when the second fix is written, not before, and run the pathfix harness after the move:
+Moved out of `pathfix.cpp` and `aimfix.cpp` on 2026-10-18, when the fire-by-rank fix was started.
+Every fix uses these instead of its own copy:
 
-| What | Where in `fixes/pathfix/src/pathfix.cpp` | Conflict if duplicated |
+| File | What | Built into |
 |---|---|---|
-| Hook engine: `HookDef` table, byte check, trampolines, naked stubs, `HandleHit` dispatch | hook table near the top, install at `Pathfix_Install` | Two engines patching the same function would chain unpredictably |
-| Crash filter and `crash.dmp` writer | `AssertCrashFilter` and the fault ring | Only one top-level exception filter can win |
-| Key polling (I / O / P), tones | `DumpThread`, `KeyEdge`, `FixBeep` | Two fixes reading the same keys (aimfix polls U in its own thread and uses system sounds) |
-| Capture window, flush thread, CSV writers | `DumpThread`, `FlushAll`, `WriteAllOnce` | Both would write into the same run folder |
-| Game clock | `GameNow`, read in the `FUN_101bc880` hook | Needed by any game-time window |
-| Guarded memory reads | `MemcpyTry`, `ReadDword`, `WriteByteTry` | None, only duplication |
+| `proxy/hook.h/.cpp` | `HookDef` / `HookSlot`; `Hook_GameModule` (optional SizeOfImage check), `Hook_SiteMatches` / `Hook_Expected` (byte check, rebased absolute addresses), `Hook_Prepare` (trampolines from one shared pool), `Hook_Patch`, `Hook_Remove`; `HOOK_DETOUR(name, handler, trampArray, i)` emits the naked stub `pushad, pushfd, push esp, call handler, popfd, popad, jmp [tramp]` | dev and public DLL |
+| `proxy/gamemem.h/.cpp` | `Mem_Init` (user-mode ceiling), `PtrPlausible`, `PtrInUser`, `MemcpyTry`, `ReadDword`, `ReadByte`, `RangeReadable`, `CopyGuarded`, `WriteByteTry`, `WriteFloatTry`, `WriteDwordTry`, `GameTickAt(base)` (the autorun pointer path to the battle tick) | dev and public DLL |
+| `proxy/keys.h/.cpp` | `Keys_GameHasFocus`, `Keys_RealDown`, `Keys_Edge` for fixes with their own polling loop; `Keys_Watch` / `Keys_Unwatch` for a press callback on the shared 50 ms poll thread (with a harness test bit); `Tone_Make` / `Tone_Play` (in-memory WAV tones) | dev DLL only |
+| `proxy/log.h/.cpp` | run-folder logger (its folder and log names still say `pathfix_runs` and `pathfix_log.txt`) | dev DLL only (compiled out with `PATHFIX_NO_LOG`) |
 
-The run-folder logger (`proxy/log.cpp`) is already shared. Its folder and log names still say
-`pathfix_runs` and `pathfix_log.txt`.
+Install order with the engine: byte-check every site (refuse on any mismatch), `Hook_Prepare`,
+the fix's own setup, `Hook_Patch`. Never two hooks on one site: `tools/re/check_prologues.py`
+lists every fix's sites.
+
+Still inside pathfix, because only pathfix needs them or because they are tied to its harness:
+the crash filter and `crash.dmp` writer (only one top-level filter can win, so a second fix must
+not install its own), the capture window, flush thread and CSV writers, and its game clock
+`GameNow` (read from the formation controller in the `FUN_101bc880` hook; the harness drives
+it with a fake clock object). New fixes read the battle tick with `GameTickAt`.

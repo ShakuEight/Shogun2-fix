@@ -120,10 +120,12 @@ patches only its own hooks, and writes no files.
 | `fixes/*/data/` (capture runs), `data/`, `logs/` | no |
 | `build/`, `build_release/`, `release/` | no |
 
-## 7. Shared infrastructure still inside the path fix
+## 7. Shared infrastructure in proxy/
 
-The path fix's dev source grew as one file and still owns code that later fixes will want: the
-hook engine, the crash filter, key polling and tones, the capture thread, and the game clock.
-They move into `proxy/` when the second fix needs them, as listed in
-[fixes/README.md](fixes/README.md). The path fix's release source has its own minimal hook
-engine.
+Since 2026-10-18 every fix, dev and release source alike, patches through one hook engine
+(`proxy/hook.h`: byte check, shared trampoline pool, naked detour macro, patch and restore) and
+reads game memory through one set of guarded helpers (`proxy/gamemem.h`, including the battle
+tick). Dev builds also share the key primitives, a key poll thread and the tone generator
+(`proxy/keys.h`). The API is listed in [fixes/README.md](fixes/README.md). The crash filter, the
+capture thread and the game clock read from the formation controller stay inside the path fix:
+only it uses them, and only one top-level exception filter can exist in the process.

@@ -1,4 +1,4 @@
-# aimfix: how it was found and how it works
+# artillery-targeting-fix (artfix): how it was found and how it works
 
 Function names are Ghidra names in the original 32-bit `Empire.Retail.dll` at image base
 `0x10000000`. The engine decode is in [docs/re/artillery_aim_x86.md](../../docs/re/artillery_aim_x86.md);
@@ -25,7 +25,7 @@ about 3 minutes per run).
 
 ## 3. Probing the live game
 
-A small research build of this fix (`AIMFIX_PROBE=1`, autorun `--env`) hooked the getter and
+A small research build of this fix (`ARTFIX_PROBE=1`, autorun `--env`) hooked the getter and
 logged every call from the engine code, the target record, the chosen soldier, his unit
 (`[entity+0x3B4]`, found by searching the entity for a pointer to a unit whose soldier array
 holds him) and that unit's soldier positions once per game second.
@@ -74,7 +74,7 @@ Self-check: a soldier not found in his unit's array is left alone and counted; i
 artillery targets all fail that check, the fix switches off for the session. Reads and the one
 write are guarded (SEH); the hook runs on game worker threads and takes no locks.
 
-Switch: the fix state is one flag the hook reads on entry. It starts on (`AIMFIX_OFF=1` starts it
+Switch: the fix state is one flag the hook reads on entry. It starts on (`ARTFIX_OFF=1` starts it
 off); a small thread polls the U key every 50 ms, only while a window of the game process has the
 focus, and flips the flag. After the self-check switch-off, U is refused.
 

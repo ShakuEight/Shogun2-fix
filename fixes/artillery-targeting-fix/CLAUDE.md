@@ -1,4 +1,10 @@
-# aimfix: history and working notes
+# artillery-targeting-fix (artfix): history and working notes
+
+Named `aimfix` until 2026-10-18 (Session 2 below). The Session 1 notes keep the names of the
+time: `fixes/aimfix/`, `src/aimfix.cpp`, `tests/aimtest.cpp`, `AIMFIX_*`, `aimfix_runs\`,
+`AimfixTest*`. Today: `fixes/artillery-targeting-fix/`, `src/artfix.cpp`,
+`tests/artfix_test.cpp`, `ARTFIX_*`, `artfix_runs\`, `ArtFixTest*`, log prefix `artfix:`,
+CMake option `FIX_ARTILLERY_TARGETING`, entry points `ArtFix_Install` / `ArtFix_Remove`.
 
 Artillery aims at the middle of the target unit. Shared rules, paths and engine knowledge are in
 the root CLAUDE.md; the engine decode is `docs/re/artillery_aim_x86.md`; the route and the design
@@ -49,3 +55,17 @@ Next (not started, waiting for the user):
   harness, and packaging of a DLL with both fixes (fixes/README.md: combined name and readme).
 - Other engine classes (mortars, rockets, other guns), fire at will, columns / squares, wall
   targets: same code path, not measured.
+
+## Session 2, 2026-10-18 (rename and shared engine; behaviour unchanged)
+
+- User: rename aimfix to "artilery-targeting-fix" (folder spelled `artillery-targeting-fix`).
+  `git mv` of the folder and files; identifiers, env variables, run folder and log prefix renamed
+  to `artfix` (list at the top of this file). `stack_offsets_art.h` regenerated with
+  `tools/re/stack_calc.py --prefix ART` (same offsets as the old AIM header).
+- Shared infrastructure moved into `proxy/` (user decision "full move now", made when the
+  fire-by-rank fix was started): `hook.h/.cpp` (HookDef / HookSlot, byte check, trampoline pool,
+  patch, restore, HOOK_DETOUR), `gamemem.h/.cpp` (guarded reads and writes, GameTickAt),
+  `keys.h/.cpp` (focus test, shared U poll thread through Keys_Watch, tones). artfix has no
+  private hook engine, reads or key thread any more.
+- Harness unchanged apart from names: full 18, off 18, selfcheck 7. The old probe folders in the
+  game directory stay `aimfix_runs\`; new probe runs write `artfix_runs\`. CSV names stay `aim_*`.

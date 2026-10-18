@@ -397,7 +397,7 @@ def main():
     ap.add_argument("--speed", type=float, default=1, help="adds replay_speed <n>; (game-speed multiplier, 4 measured as 40 ticks/s; default 1)")
     ap.add_argument("--script-line", action="append", help="extra user.script.txt line, e.g. \"battle_time_limit 0;\"")
     ap.add_argument("--env", action="append", metavar="NAME=VALUE",
-                    help="extra environment variable for the game process (repeatable), e.g. AIMFIX_MODE=1")
+                    help="extra environment variable for the game process (repeatable), e.g. ARTFIX_OFF=1")
     ap.add_argument("--no-minimize", action="store_true", help="show the game window normally")
     ap.add_argument("--keep-open", action="store_true", help="do not close the game at the end")
     ap.add_argument("--no-stall-end", action="store_true", help="a 30 s tick stall does not end the run")

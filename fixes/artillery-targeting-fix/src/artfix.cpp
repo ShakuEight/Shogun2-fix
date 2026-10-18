@@ -1,28 +1,32 @@
-// aimfix.cpp -- artillery aiming fix for Total War: Shogun 2 (original x86 Empire.Retail.dll).
+// artfix.cpp -- artillery targeting fix for Total War: Shogun 2 (original x86 Empire.Retail.dll).
+// Folder fixes/artillery-targeting-fix/ (named aimfix until 2026-10-18).
 //
 // Dev build. The game aims each artillery piece at one soldier of the target unit, roughly the one
 // in front of the gun, so a battery standing off to one side of its target hits the end of the
 // line. The fix (one entry hook, FUN_1047fd90, see "The fix" below) points every artillery shot at
-// the soldier nearest to the target unit's centroid. On at launch; AIMFIX_OFF=1 starts it off; the U
+// the soldier nearest to the target unit's centroid. On at launch; ARTFIX_OFF=1 starts it off; the U
 // key toggles it on / off in the game.
 //
-// AIMFIX_PROBE=1 (research, used with tools/autorun --env) installs two more hooks that write
-// <game>\aimfix_runs\<stamp>\: aim_calls.csv (one row per shot, from the gun's fire routine, via the
+// ARTFIX_PROBE=1 (research, used with tools/autorun --env) installs two more hooks that write
+// <game>\artfix_runs\<stamp>\: aim_calls.csv (one row per shot, from the gun's fire routine, via the
 // target-position getter FUN_103a6850), aim_settarget.csv (every target record a gun takes,
 // FUN_1045a8a0), aim_units.csv (target unit soldier positions once per game second) and
-// aim_fix.csv (every change the fix makes). AIMFIX_WATCH=1 adds a write watchpoint on the first
+// aim_fix.csv (every change the fix makes). ARTFIX_WATCH=1 adds a write watchpoint on the first
 // four guns' target records (aim_watch.csv); that is how the chain was found.
+//
+// Shared pieces (proxy/): hook engine (hook.h), guarded reads and the battle tick (gamemem.h),
+// the key poll thread (keys.h).
 
 #include "log.h"
-#include "stack_offsets_aim.h"
+#include "hook.h"
+#include "gamemem.h"
+#include "keys.h"
+#include "stack_offsets_art.h"
 #include <windows.h>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <cmath>
-
-static const uint32_t ANALYSED_IMAGE_BASE = 0x10000000;   // s2x86 / Ghidra names
-static const uint32_t SUPPORTED_IMAGE_SIZE = 0x01D88000;  // SizeOfImage of the analysed build
 
 static uint32_t g_base = 0;
 
@@ -37,71 +41,33 @@ enum {
     HOOK_COUNT
 };
 
-static const int MAX_STOLEN = 16;
-
-struct HookDef {
-    const char* func;       // Ghidra name in s2x86
-    const char* role;
-    uint32_t    rva;
-    int         len;        // stolen bytes, whole instructions, no branch into the range
-    uint8_t     expected[MAX_STOLEN];
-    bool        probeOnly;  // installed only with AIMFIX_PROBE=1
-};
-
 static const HookDef g_hookDefs[HOOK_COUNT] = {
     { "FUN_103a6850", "target position getter", 0x3A6850, 6,
-      { 0x83, 0xEC, 0x0C, 0x56, 0x8B, 0xF1 }, true },      // SUB ESP,0xC; PUSH ESI; MOV ESI,ECX
+      { 0x83, 0xEC, 0x0C, 0x56, 0x8B, 0xF1 }, -1, true },      // SUB ESP,0xC; PUSH ESI; MOV ESI,ECX
     { "FUN_1045a8a0", "shooter set target",     0x45A8A0, 6,
-      { 0xF3, 0x0F, 0x10, 0x44, 0x24, 0x10 }, true },      // MOVSS XMM0,[ESP+0x10]
+      { 0xF3, 0x0F, 0x10, 0x44, 0x24, 0x10 }, -1, true },      // MOVSS XMM0,[ESP+0x10]
     { "FUN_1047fd90", "engine fire action update", 0x47FD90, 8,
-      { 0x53, 0x56, 0x8B, 0xF1, 0x80, 0x7E, 0x7C, 0x00 }, false },
+      { 0x53, 0x56, 0x8B, 0xF1, 0x80, 0x7E, 0x7C, 0x00 }, -1, false },
       // PUSH EBX; PUSH ESI; MOV ESI,ECX; CMP byte [ESI+0x7C],0
 };
 
-static struct {
-    uint8_t* target;
-    uint8_t  original[MAX_STOLEN];
-    int      len;
-    bool     active;
-} g_hookInfo[HOOK_COUNT] = {};
-
-extern "C" uint8_t* g_aimTrampolines[HOOK_COUNT] = {};
-static uint8_t* g_trampPool = nullptr;
+static HookSlot g_slots[HOOK_COUNT] = {};
+extern "C" uint8_t* g_artTrampolines[HOOK_COUNT] = {};
 
 // ---------------------------------------------------------------------------
-// Guarded reads
+// Guarded reads (proxy/gamemem.h)
 // ---------------------------------------------------------------------------
 
-static uint32_t g_userMax = 0x7FFEFFFF;
-
-static bool Ptr(uint32_t p) { return p >= 0x10000 && p <= g_userMax; }
-
-static bool Rd(uint32_t addr, void* out, uint32_t n) {
-    if (!Ptr(addr)) return false;
-    __try {
-        memcpy(out, (const void*)(uintptr_t)addr, n);
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-}
-
-static bool Rd32(uint32_t addr, uint32_t* out) { return Rd(addr, out, 4); }
+static bool Ptr(uint32_t p) { return PtrInUser(p); }
+static bool Rd(uint32_t addr, void* out, uint32_t n) { return MemcpyTry(out, addr, n); }
+static bool Rd32(uint32_t addr, uint32_t* out) { return MemcpyTry(out, addr, 4); }
+static bool Wr32(uint32_t addr, uint32_t v) { return WriteDwordTry(addr, v); }
 
 struct Vec3 { float x, y, z; };
 
 static bool RdPos(uint32_t entity, Vec3* p) { return Rd(entity + 0x48, p, 12); }
 
-// Battle tick (0.1 game s) through the autorun tool's pointer path (tools/autorun/src/game_offsets.h).
-static uint32_t GameTick() {
-    uint32_t shell, mode, owner, tobj, tick;
-    if (!Rd32(g_base + 0x017C755C, &shell)) return 0;
-    if (!Rd32(shell + 0x50, &mode)) return 0;
-    if (!Rd32(mode + 0x00, &owner)) return 0;
-    if (!Rd32(owner + 0x1C, &tobj)) return 0;
-    if (!Rd32(tobj + 0x50, &tick)) return 0;
-    return tick;
-}
+static uint32_t GameTick() { return GameTickAt(g_base); }
 
 // ---------------------------------------------------------------------------
 // Unit of an entity: the dword at entity+off that points to a unit whose soldier array holds the
@@ -136,7 +102,7 @@ static uint32_t UnitOf(uint32_t entity, uint32_t* count, uint32_t* arr, int* ind
         if (Rd32(entity + k, &u) && Ptr(u) && u != entity && UnitHolds(u, entity, count, arr, index)) {
             if (off != (LONG)k) {
                 InterlockedExchange(&g_entUnitOff, (LONG)k);
-                Log("aimfix: entity -> unit pointer found at entity+0x%X (unit 0x%08X, %u soldiers)", k, u, *count);
+                Log("artfix: entity -> unit pointer found at entity+0x%X (unit 0x%08X, %u soldiers)", k, u, *count);
             }
             return u;
         }
@@ -145,7 +111,7 @@ static uint32_t UnitOf(uint32_t entity, uint32_t* count, uint32_t* arr, int* ind
 }
 
 // ---------------------------------------------------------------------------
-// Probe output (AIMFIX_PROBE=1): <game>\aimfix_runs\<stamp>\aim_calls.csv and aim_units.csv
+// Probe output (ARTFIX_PROBE=1): <game>\artfix_runs\<stamp>\aim_calls.csv and aim_units.csv
 // ---------------------------------------------------------------------------
 
 static CRITICAL_SECTION g_cs;
@@ -162,21 +128,25 @@ static DWORD g_lastFlush = 0;
 struct UnitDump { uint32_t unit; uint32_t tick; };
 static UnitDump g_dumped[64];
 
-static void OpenProbe() {
+static bool EnvIs1(const char* name) {
     char v[8] = "";
-    if (GetEnvironmentVariableA("AIMFIX_PROBE", v, sizeof(v)) == 0 || v[0] != '1') return;
+    return GetEnvironmentVariableA(name, v, sizeof(v)) > 0 && v[0] == '1';
+}
+
+static void OpenProbe() {
+    if (!EnvIs1("ARTFIX_PROBE")) return;
     char exe[MAX_PATH];
     GetModuleFileNameA(nullptr, exe, MAX_PATH);
     char* slash = strrchr(exe, '\\');
     if (slash) slash[1] = 0;
     char root[MAX_PATH], dir[MAX_PATH], path[MAX_PATH];
-    snprintf(root, sizeof(root), "%saimfix_runs\\", exe);
+    snprintf(root, sizeof(root), "%sartfix_runs\\", exe);
     CreateDirectoryA(root, nullptr);
     SYSTEMTIME st;
     GetLocalTime(&st);
     snprintf(dir, sizeof(dir), "%s%04d%02d%02d_%02d%02d%02d\\", root, st.wYear, st.wMonth, st.wDay,
              st.wHour, st.wMinute, st.wSecond);
-    if (!CreateDirectoryA(dir, nullptr)) { Log("aimfix: cannot create %s", dir); return; }
+    if (!CreateDirectoryA(dir, nullptr)) { Log("artfix: cannot create %s", dir); return; }
     strcpy(g_dir, dir);
     snprintf(path, sizeof(path), "%saim_calls.csv", dir);
     g_calls = fopen(path, "w");
@@ -184,7 +154,7 @@ static void OpenProbe() {
     g_units = fopen(path, "w");
     snprintf(path, sizeof(path), "%saim_settarget.csv", dir);
     g_sets = fopen(path, "w");
-    if (!g_calls || !g_units || !g_sets) { Log("aimfix: cannot open the probe files in %s", dir); return; }
+    if (!g_calls || !g_units || !g_sets) { Log("artfix: cannot open the probe files in %s", dir); return; }
     setvbuf(g_calls, nullptr, _IOFBF, 1 << 20);
     setvbuf(g_units, nullptr, _IOFBF, 1 << 20);
     fprintf(g_calls, "ms,tick,thread,ret_rva,rec,off_x,off_y,off_z,ent,obj,xform,ent_x,ent_y,ent_z,"
@@ -195,7 +165,7 @@ static void OpenProbe() {
                     "ent_x,ent_z,unit,count,index,cen_x,cen_z,flags,esi,esi_vt,stack\n");
     setvbuf(g_sets, nullptr, _IOFBF, 1 << 20);
     g_probe = true;
-    Log("aimfix: probe on, writing %s", dir);
+    Log("artfix: probe on, writing %s", dir);
     WatchStart(dir);
 }
 
@@ -290,7 +260,7 @@ static void WatchAdd(uint32_t addr) {
     if (n >= 4) return;
     if (InterlockedCompareExchange(&g_watchCount, n + 1, n) != n) return;
     InterlockedExchange(&g_watchAddr[n], (LONG)addr);
-    Log("aimfix: watch Dr%ld on 0x%08X (target record entity field)", n, addr);
+    Log("artfix: watch Dr%ld on 0x%08X (target record entity field)", n, addr);
 }
 
 static LONG CALLBACK WatchVeh(PEXCEPTION_POINTERS ep) {
@@ -362,8 +332,7 @@ static DWORD WINAPI WatchThread(LPVOID) {
 }
 
 static void WatchStart(const char* dir) {
-    char v[8] = "";
-    if (GetEnvironmentVariableA("AIMFIX_WATCH", v, sizeof(v)) == 0 || v[0] != '1') return;
+    if (!EnvIs1("ARTFIX_WATCH")) return;
     char path[MAX_PATH];
     snprintf(path, sizeof(path), "%saim_watch.csv", dir);
     g_watch = fopen(path, "w");
@@ -372,7 +341,7 @@ static void WatchStart(const char* dir) {
     fprintf(g_watch, "ms,tick,thread,slot,addr,value,eip_rva,ecx,esi,edi,ebx,stack_candidates\n");
     g_veh = AddVectoredExceptionHandler(1, WatchVeh);
     g_watchThread = CreateThread(nullptr, 0, WatchThread, nullptr, 0, &g_watchTid);
-    Log("aimfix: write watchpoint on (AIMFIX_WATCH=1)");
+    Log("artfix: write watchpoint on (ARTFIX_WATCH=1)");
 }
 
 // ---------------------------------------------------------------------------
@@ -402,16 +371,6 @@ static volatile LONG g_fixNotSoldier = 0;  // artillery record without a soldier
 static volatile LONG g_fixBadUnit = 0;     // soldier not found in [soldier+0x3B4]'s array
 static volatile LONG g_fixDisabled = 0;    // self-check switched the fix off; U is refused from then on
 static FILE* g_fixRows = nullptr;          // probe only
-
-static bool Wr32(uint32_t addr, uint32_t v) {
-    if (!Ptr(addr)) return false;
-    __try {
-        *(volatile uint32_t*)(uintptr_t)addr = v;
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-}
 
 static bool IsArtillery(uint32_t shooter) {
     uint32_t vt, fn;
@@ -453,7 +412,7 @@ static uint32_t CentreSoldier(uint32_t unit, uint32_t member, uint32_t* countOut
 
 static void HandleOrderCopy(const uint8_t* ctx) {
     if (!g_fixOn) return;
-    uint32_t action = *(const uint32_t*)(ctx + AIM_OFF_ECX);
+    uint32_t action = *(const uint32_t*)(ctx + ART_OFF_ECX);
     uint8_t copied = 1;
     if (!Rd(action + ACTION_OFF_COPIED, &copied, 1) || copied) return;   // only right before the copy
     uint32_t gun;
@@ -470,7 +429,7 @@ static void HandleOrderCopy(const uint8_t* ctx) {
         LONG bad = InterlockedIncrement(&g_fixBadUnit);
         if (bad >= 20 && g_fixChanged + g_fixKept == 0 && !InterlockedExchange(&g_fixDisabled, 1)) {
             InterlockedExchange(&g_fixOn, 0);
-            Log("aimfix: DISABLED for this session, the first %ld artillery targets were not found in their "
+            Log("artfix: DISABLED for this session, the first %ld artillery targets were not found in their "
                 "unit's soldier array", bad);
             MessageBeep(MB_ICONHAND);
         }
@@ -490,8 +449,8 @@ static void HandleOrderCopy(const uint8_t* ctx) {
     }
 }
 
-// Harness only (fixes/aimfix/tests): the fix state and its counters.
-extern "C" __declspec(dllexport) void __stdcall AimfixTestCounters(long* out) {
+// Harness only (fixes/artillery-targeting-fix/tests): the fix state and its counters.
+extern "C" __declspec(dllexport) void __stdcall ArtFixTestCounters(long* out) {
     out[0] = g_fixOn;
     out[1] = g_fixChanged;
     out[2] = g_fixKept;
@@ -499,61 +458,41 @@ extern "C" __declspec(dllexport) void __stdcall AimfixTestCounters(long* out) {
     out[4] = g_fixBadUnit;
 }
 
-// U toggles the fix on / off at any time (dev build). Real keys count only while a window of this
-// process has the focus (GetAsyncKeyState also sees keys typed into other programs). The harness
-// presses the key through AimfixTestKeys instead (bit 0 = U); the game never calls it.
+// U toggles the fix on / off at any time (dev build), through the shared key poll thread
+// (proxy/keys.h: real key only while the game has the focus). The harness presses the key through
+// ArtFixTestKeys instead (bit 0 = U); the game never calls it.
 static const int KEY_TOGGLE_VK = 'U';
 static volatile LONG g_testKeys = 0;
-static HANDLE g_keyThread = nullptr;
-extern "C" __declspec(dllexport) void __stdcall AimfixTestKeys(LONG bits) {
+static bool g_keyWatched = false;
+extern "C" __declspec(dllexport) void __stdcall ArtFixTestKeys(LONG bits) {
     InterlockedExchange(&g_testKeys, bits);
-}
-
-static bool GameHasFocus() {
-    HWND fg = GetForegroundWindow();
-    if (!fg) return false;
-    DWORD pid = 0;
-    GetWindowThreadProcessId(fg, &pid);
-    return pid == GetCurrentProcessId();
 }
 
 static void ToggleKey() {
     if (g_fixDisabled) {
-        Log("aimfix: U refused, the fix is DISABLED for this session (unit check failed)");
+        Log("artfix: U refused, the fix is DISABLED for this session (unit check failed)");
         MessageBeep(MB_ICONHAND);
         return;
     }
     LONG on = g_fixOn ? 0 : 1;
     InterlockedExchange(&g_fixOn, on);
-    Log("aimfix: U, fix %s (so far: moved %ld, already centre %ld)", on ? "ON" : "OFF", g_fixChanged, g_fixKept);
+    Log("artfix: U, fix %s (so far: moved %ld, already centre %ld)", on ? "ON" : "OFF", g_fixChanged, g_fixKept);
     MessageBeep(on ? MB_ICONASTERISK : MB_OK);
-}
-
-static DWORD WINAPI KeyThread(LPVOID) {
-    bool down = false;
-    while (!g_quit) {
-        Sleep(50);
-        bool now = (g_testKeys & 1) != 0 ||
-                   ((GetAsyncKeyState(KEY_TOGGLE_VK) & 0x8000) != 0 && GameHasFocus());
-        if (now && !down) ToggleKey();
-        down = now;
-    }
-    return 0;
 }
 
 // ---------------------------------------------------------------------------
 // Handlers and naked detours. The detour sequence is exactly the one given to
-// tools/stack_calc.py:   pushad, pushfd, mark:ctx, push:ctxptr  (stack_offsets_aim.h)
+// tools/re/stack_calc.py:   pushad, pushfd, mark:ctx, push:ctxptr  (stack_offsets_art.h)
 // ---------------------------------------------------------------------------
 
 static void HandleTargetPos(const uint8_t* ctx) {
     if (!g_probe) return;
-    uint32_t ret = *(const uint32_t*)(ctx + AIM_OFF_RET);
+    uint32_t ret = *(const uint32_t*)(ctx + ART_OFF_RET);
     uint32_t rva = ret - g_base;
     bool shootAction = rva >= 0x3D3000 && rva < 0x3D5000;
     bool launchCheck = rva == 0x420D16;   // FUN_10420d00 (called by FUN_103d4320 with action+0x2C)
     if (!shootAction && !launchCheck) return;
-    uint32_t rec = *(const uint32_t*)(ctx + AIM_OFF_ECX);
+    uint32_t rec = *(const uint32_t*)(ctx + ART_OFF_ECX);
     if (g_watch) WatchAdd(rec + 0x0C);
     ProbeCall(rec, rva);
 }
@@ -561,12 +500,12 @@ static void HandleTargetPos(const uint8_t* ctx) {
 // FUN_1045a8a0 (__thiscall, ECX = shooter entity, arg1 flags, arg2 = source target record)
 static void HandleSetTarget(const uint8_t* ctx) {
     if (!g_probe) return;
-    uint32_t shooter = *(const uint32_t*)(ctx + AIM_OFF_ECX);
-    uint32_t src = *(const uint32_t*)(ctx + AIM_OFF_ARG2);
-    uint32_t flags = *(const uint32_t*)(ctx + AIM_OFF_ARG1);
-    uint32_t esi = *(const uint32_t*)(ctx + AIM_OFF_ESI);
-    uint32_t ret = *(const uint32_t*)(ctx + AIM_OFF_RET);
-    uint32_t espEntry = *(const uint32_t*)(ctx + AIM_OFF_ESP_BEFORE_PUSHAD);
+    uint32_t shooter = *(const uint32_t*)(ctx + ART_OFF_ECX);
+    uint32_t src = *(const uint32_t*)(ctx + ART_OFF_ARG2);
+    uint32_t flags = *(const uint32_t*)(ctx + ART_OFF_ARG1);
+    uint32_t esi = *(const uint32_t*)(ctx + ART_OFF_ESI);
+    uint32_t ret = *(const uint32_t*)(ctx + ART_OFF_RET);
+    uint32_t espEntry = *(const uint32_t*)(ctx + ART_OFF_ESP_BEFORE_PUSHAD);
     struct { float ox, oy, oz; uint32_t ent, obj, xform; } r;
     if (!Rd(src, &r, sizeof(r))) return;
     Vec3 sp = {0, 0, 0}, ep = {0, 0, 0};
@@ -627,7 +566,7 @@ static void HandleSetTarget(const uint8_t* ctx) {
             Rd32(r.ent, &tvt);
             Rd32(su + 0x510, &srec);
             Rd32(unit + 0x510, &trec);
-            Log("aimfix: shooter 0x%08X vt RVA 0x%06X, fire-order slot +0x%X; [s+0x3B4] = 0x%08X holds it: %d "
+            Log("artfix: shooter 0x%08X vt RVA 0x%06X, fire-order slot +0x%X; [s+0x3B4] = 0x%08X holds it: %d "
                 "(index %d of %u); its unit type [[u+0x2C]+0x1C] = %u, [[u+0x2AC]+0x10] = %u; target unit "
                 "0x%08X type %u, list %u; target entity vt RVA 0x%06X; unit records 0x%08X / 0x%08X",
                 shooter, svt - g_base, slot, su, inUnit, sidx, sc, t1c, l10, unit, tt1c, tl10,
@@ -658,66 +597,35 @@ static void HandleSetTarget(const uint8_t* ctx) {
     LeaveCriticalSection(&g_cs);
 }
 
-extern "C" void __stdcall AimHandler0(const uint8_t* ctx) { HandleTargetPos(ctx); }
-extern "C" void __stdcall AimHandler1(const uint8_t* ctx) { HandleSetTarget(ctx); }
-extern "C" void __stdcall AimHandler2(const uint8_t* ctx) { HandleOrderCopy(ctx); }
+extern "C" void __stdcall ArtHandler0(const uint8_t* ctx) { HandleTargetPos(ctx); }
+extern "C" void __stdcall ArtHandler1(const uint8_t* ctx) { HandleSetTarget(ctx); }
+extern "C" void __stdcall ArtHandler2(const uint8_t* ctx) { HandleOrderCopy(ctx); }
 
-__declspec(naked) void AimDetour0() {
-    __asm pushad
-    __asm pushfd
-    __asm push esp
-    __asm call AimHandler0
-    __asm popfd
-    __asm popad
-    __asm jmp dword ptr [g_aimTrampolines + 0]
-}
+HOOK_DETOUR(ArtDetour0, ArtHandler0, g_artTrampolines, 0)
+HOOK_DETOUR(ArtDetour1, ArtHandler1, g_artTrampolines, 1)
+HOOK_DETOUR(ArtDetour2, ArtHandler2, g_artTrampolines, 2)
 
-__declspec(naked) void AimDetour1() {
-    __asm pushad
-    __asm pushfd
-    __asm push esp
-    __asm call AimHandler1
-    __asm popfd
-    __asm popad
-    __asm jmp dword ptr [g_aimTrampolines + 4]
-}
-
-__declspec(naked) void AimDetour2() {
-    __asm pushad
-    __asm pushfd
-    __asm push esp
-    __asm call AimHandler2
-    __asm popfd
-    __asm popad
-    __asm jmp dword ptr [g_aimTrampolines + 8]
-}
-
-typedef void (*DetourFn)();
-static const DetourFn g_detours[HOOK_COUNT] = { AimDetour0, AimDetour1, AimDetour2 };
+static const HookDetour g_detours[HOOK_COUNT] = { ArtDetour0, ArtDetour1, ArtDetour2 };
 
 // ---------------------------------------------------------------------------
 // Install / remove
 // ---------------------------------------------------------------------------
 
-void Aimfix_Install() {
-    Log("aimfix: artillery aims at the centre of the target unit (dev build)");
-    SYSTEM_INFO si;
-    GetSystemInfo(&si);
-    g_userMax = (uint32_t)(uintptr_t)si.lpMaximumApplicationAddress;
-    HMODULE hMod = GetModuleHandleA("empire.retail.dll");
-    if (!hMod) { Log("aimfix: REFUSED, empire.retail.dll is not loaded"); return; }
-    uint8_t* base = (uint8_t*)hMod;
+void ArtFix_Install() {
+    Log("artfix: artillery aims at the centre of the target unit (dev build)");
+    Mem_Init();
+    uint32_t size = 0;
+    uint8_t* base = Hook_GameModule(false, &size);
+    if (!base) { Log("artfix: REFUSED, empire.retail.dll is not loaded"); return; }
     g_base = (uint32_t)(uintptr_t)base;
-    const IMAGE_DOS_HEADER* dos = (const IMAGE_DOS_HEADER*)base;
-    const IMAGE_NT_HEADERS32* nt = (const IMAGE_NT_HEADERS32*)(base + dos->e_lfanew);
-    if (nt->OptionalHeader.SizeOfImage != SUPPORTED_IMAGE_SIZE) {
-        Log("aimfix: REFUSED, SizeOfImage 0x%08X is not the analysed build", nt->OptionalHeader.SizeOfImage);
+    if (size != HOOK_ANALYSED_IMAGE_SIZE) {
+        Log("artfix: REFUSED, SizeOfImage 0x%08X is not the analysed build", size);
         return;
     }
     for (int h = 0; h < HOOK_COUNT; h++) {
-        const HookDef& d = g_hookDefs[h];
-        if (memcmp(base + d.rva, d.expected, d.len) != 0) {
-            Log("aimfix: REFUSED, bytes at RVA 0x%06X (%s) differ from the analysed binary", d.rva, d.func);
+        if (!Hook_SiteMatches(base, g_hookDefs[h])) {
+            Log("artfix: REFUSED, bytes at RVA 0x%06X (%s) differ from the analysed binary", g_hookDefs[h].rva,
+                g_hookDefs[h].func);
             return;
         }
     }
@@ -734,65 +642,33 @@ void Aimfix_Install() {
                                "new_ent,new_x,new_z\n");
         }
     }
-    char off[8] = "";
-    bool disabled = GetEnvironmentVariableA("AIMFIX_OFF", off, sizeof(off)) > 0 && off[0] == '1';
+    bool disabled = EnvIs1("ARTFIX_OFF");
     InterlockedExchange(&g_fixOn, disabled ? 0 : 1);
-    Log("aimfix: fix %s", disabled ? "OFF (AIMFIX_OFF=1), hooks still installed" : "ON");
-    g_trampPool = (uint8_t*)VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-    if (!g_trampPool) { Log("aimfix: REFUSED, no trampoline memory"); return; }
-    for (int h = 0; h < HOOK_COUNT; h++) {
-        const HookDef& d = g_hookDefs[h];
-        if (d.probeOnly && !g_probe) continue;
-        uint8_t* target = base + d.rva;
-        uint8_t* tramp = g_trampPool + 32 * h;
-        memcpy(tramp, target, d.len);
-        tramp[d.len] = 0xE9;
-        int32_t back = (int32_t)((target + d.len) - (tramp + d.len + 5));
-        memcpy(tramp + d.len + 1, &back, 4);
-        g_aimTrampolines[h] = tramp;
-        memcpy(g_hookInfo[h].original, target, d.len);
-        g_hookInfo[h].target = target;
-        g_hookInfo[h].len = d.len;
+    Log("artfix: fix %s", disabled ? "OFF (ARTFIX_OFF=1), hooks still installed" : "ON");
+    bool use[HOOK_COUNT];
+    for (int h = 0; h < HOOK_COUNT; h++) use[h] = !g_hookDefs[h].probeOnly || g_probe;
+    if (!Hook_Prepare(base, g_hookDefs, HOOK_COUNT, use, g_artTrampolines, g_slots)) {
+        Log("artfix: REFUSED, no trampoline memory");
+        return;
     }
-    FlushInstructionCache(GetCurrentProcess(), g_trampPool, 4096);
-    for (int h = 0; h < HOOK_COUNT; h++) {
-        uint8_t* target = g_hookInfo[h].target;
-        if (!target) continue;
-        int len = g_hookInfo[h].len;
-        uint8_t patch[MAX_STOLEN];
-        patch[0] = 0xE9;
-        int32_t rel = (int32_t)((uint8_t*)g_detours[h] - target - 5);
-        memcpy(patch + 1, &rel, 4);
-        memset(patch + 5, 0x90, len - 5);
-        DWORD old;
-        VirtualProtect(target, len, PAGE_EXECUTE_READWRITE, &old);
-        memcpy(target, patch, len);
-        VirtualProtect(target, len, old, &old);
-        FlushInstructionCache(GetCurrentProcess(), target, len);
-        g_hookInfo[h].active = true;
-        Log("aimfix: hook %s (%s) installed at RVA 0x%06X", g_hookDefs[h].func, g_hookDefs[h].role,
-            g_hookDefs[h].rva);
-    }
-    g_keyThread = CreateThread(nullptr, 0, KeyThread, nullptr, 0, nullptr);
-    Log("aimfix: U toggles the fix on / off%s", g_keyThread ? "" : " (ERROR: key thread not started)");
+    Hook_Patch(g_detours, g_slots, HOOK_COUNT);
+    for (int h = 0; h < HOOK_COUNT; h++)
+        if (g_slots[h].active)
+            Log("artfix: hook %s (%s) installed at RVA 0x%06X", g_hookDefs[h].func, g_hookDefs[h].role,
+                g_hookDefs[h].rva);
+    g_keyWatched = Keys_Watch(KEY_TOGGLE_VK, &g_testKeys, 1, ToggleKey);
+    Log("artfix: U toggles the fix on / off%s", g_keyWatched ? "" : " (ERROR: key poll not started)");
 }
 
-void Aimfix_Remove() {
+void ArtFix_Remove() {
     InterlockedExchange(&g_quit, 1);
     if (g_base)
-        Log("aimfix: artillery targets moved to the centre soldier %ld, already centre %ld, not a soldier %ld, "
+        Log("artfix: artillery targets moved to the centre soldier %ld, already centre %ld, not a soldier %ld, "
             "unit check failed %ld", g_fixChanged, g_fixKept, g_fixNotSoldier, g_fixBadUnit);
     if (g_watchThread) { WaitForSingleObject(g_watchThread, 1000); CloseHandle(g_watchThread); }
-    if (g_keyThread) { WaitForSingleObject(g_keyThread, 1000); CloseHandle(g_keyThread); g_keyThread = nullptr; }
+    if (g_keyWatched) { Keys_Unwatch(ToggleKey); g_keyWatched = false; }
     if (g_veh) RemoveVectoredExceptionHandler(g_veh);
-    for (int h = 0; h < HOOK_COUNT; h++) {
-        if (!g_hookInfo[h].active) continue;
-        DWORD old;
-        VirtualProtect(g_hookInfo[h].target, g_hookInfo[h].len, PAGE_EXECUTE_READWRITE, &old);
-        memcpy(g_hookInfo[h].target, g_hookInfo[h].original, g_hookInfo[h].len);
-        VirtualProtect(g_hookInfo[h].target, g_hookInfo[h].len, old, &old);
-        g_hookInfo[h].active = false;
-    }
+    Hook_Remove(g_slots, HOOK_COUNT);
     if (g_probe) {
         EnterCriticalSection(&g_cs);
         fclose(g_calls);
@@ -804,6 +680,6 @@ void Aimfix_Remove() {
         g_watch = nullptr;
         g_probe = false;
         LeaveCriticalSection(&g_cs);
-        Log("aimfix: probe closed, %u rows", g_rows);
+        Log("artfix: probe closed, %u rows", g_rows);
     }
 }

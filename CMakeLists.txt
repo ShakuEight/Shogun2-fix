@@ -20,7 +20,7 @@ endif()
 option(PUBLIC_RELEASE "Build the public release DLL: release sources only, no log, no capture, no keys" OFF)
 option(BUILD_TESTS "Build the offline harness executables (dev build only)" ON)
 option(FIX_PATHFIX "Path fix: units keep formation through gates, doorways and corners (fixes/pathfix)" ON)
-option(FIX_AIMFIX "Aim fix: artillery aims at the middle of the target unit (fixes/aimfix)" ON)
+option(FIX_ARTILLERY_TARGETING "Artillery targeting fix: artillery aims at the middle of the target unit (fixes/artillery-targeting-fix)" ON)
 option(TOOL_AUTORUN "Dev tool: version.dll proxy for unattended replay runs (tools/autorun); ignored with PUBLIC_RELEASE" OFF)
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
@@ -30,13 +30,15 @@ add_library(dinput8 SHARED
     proxy/dllmain.cpp
     proxy/dinput8_proxy.cpp
     proxy/fixes.cpp
+    proxy/hook.cpp
+    proxy/gamemem.cpp
     proxy/dinput8.def)
 target_include_directories(dinput8 PRIVATE proxy)
 target_compile_definitions(dinput8 PRIVATE _CRT_SECURE_NO_WARNINGS)
 if(PUBLIC_RELEASE)
     target_compile_definitions(dinput8 PRIVATE PATHFIX_NO_LOG)          # proxy/log.h: logging compiled out
 else()
-    target_sources(dinput8 PRIVATE proxy/log.cpp)
+    target_sources(dinput8 PRIVATE proxy/log.cpp proxy/keys.cpp)   # keys + tones: dev build only
     # every launch logs into <game>\pathfix_log.txt, or with PATHFIX_CAPTURE=1 into
     # <game>\pathfix_runs\<YYYYMMDD_HHMMSS>\ (proxy/log.cpp)
     target_compile_definitions(dinput8 PRIVATE PATHFIX_RUN_FOLDERS)
@@ -50,8 +52,8 @@ set_target_properties(dinput8 PROPERTIES PREFIX "" OUTPUT_NAME "dinput8")
 if(FIX_PATHFIX)
     include(fixes/pathfix/pathfix.cmake)
 endif()
-if(FIX_AIMFIX AND NOT PUBLIC_RELEASE)
-    include(fixes/aimfix/aimfix.cmake)
+if(FIX_ARTILLERY_TARGETING AND NOT PUBLIC_RELEASE)
+    include(fixes/artillery-targeting-fix/artillery-targeting-fix.cmake)
 endif()
 
 # --- developer tools (separate proxy DLLs, never part of the public release) ---------------

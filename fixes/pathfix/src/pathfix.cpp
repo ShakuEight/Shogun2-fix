@@ -638,11 +638,12 @@
 // the entry patches.
 
 #include "log.h"
+#include "hook.h"       // proxy/: shared hook engine
+#include "gamemem.h"    // proxy/: guarded reads and writes, user-mode ceiling
+#include "keys.h"       // proxy/: key primitives and tones (dev build)
 #include "stack_offsets_v16.h"
 #include "stack_offsets_v17.h"
 #include "stack_offsets_v34.h"
-#include <mmsystem.h>
-#pragma comment(lib, "winmm.lib")
 #include <dbghelp.h>
 #include <cstdint>
 #include <cstring>
@@ -657,12 +658,11 @@
 static uint32_t g_moduleBaseVal = 0;
 static uint32_t g_moduleSize = 0;            // SizeOfImage, to tell in-module callers from others
 static uint32_t g_selfStart = 0, g_selfEnd = 0;   // this proxy DLL's image range
-// Highest user-mode address (GetSystemInfo at install). Shogun2.exe is
-// large-address-aware, so on 64-bit Windows the heap reaches 0xFFFEFFFF; the
-// first v16 build (20:22) assumed 0x7FFEFFFF and skipped every soldier above
-// 2 GB (about 20 percent of the rows of run 20261014_203329).
-static uint32_t g_userMax = 0x7FFEFFFF;
-static const uint32_t ANALYSED_IMAGE_BASE = 0x10000000;   // s2x86 / Ghidra names
+// Highest user-mode address: Mem_UserMax() (proxy/gamemem.h, GetSystemInfo at
+// install). Shogun2.exe is large-address-aware, so on 64-bit Windows the heap
+// reaches 0xFFFEFFFF; the first v16 build (20:22) assumed 0x7FFEFFFF and
+// skipped every soldier above 2 GB (about 20 percent of the rows of run
+// 20261014_203329).
 
 // ---------------------------------------------------------------------------
 // Hook table
@@ -693,17 +693,9 @@ static const uint8_t HOOK_PRESET = 0xFE;     // v16 F6 override preset change (n
 static const uint8_t HOOK_FIXMODE = 0xFC;    // v17 F6 fix mode change / fix disabled (events file)
 static const uint8_t HOOK_WATCHTOGGLE = 0xFD; // F7 watchpoint on / off (events file)
 
-static const int MAX_STOLEN = 16;
-
-struct HookDef {
-    const char* func;       // Ghidra name in s2x86
-    const char* role;
-    uint32_t    rva;
-    int         len;        // stolen bytes, whole instructions
-    uint8_t     expected[MAX_STOLEN];
-    int         relocOff;   // offset of an absolute address inside the stolen
-                            // bytes (the loader rebases it), or -1
-};
+// HookDef / HookSlot and the install steps: proxy/hook.h (shared hook engine).
+// relocOff = offset of an absolute address inside the stolen bytes (the loader
+// rebases it), or -1.
 
 // Bytes from docs/prologues_v16.txt (tools/dump_prologue.py on s2x86, image
 // base 0x10000000; checked against the on-disk DLL by tools/check_prologues.py).
@@ -752,31 +744,10 @@ static const HookDef g_hookDefs[HOOK_COUNT] = {
       { 0x83, 0xEC, 0x10, 0x56, 0x57 }, -1 },
 };
 
-static struct {
-    uint8_t* target;
-    uint8_t  original[MAX_STOLEN];
-    int      stolenLen;
-    bool     active;
-} g_hookInfo[HOOK_COUNT] = {};
+static HookSlot g_hookSlots[HOOK_COUNT] = {};
 
 // Trampoline pointers, one per hook. The naked detours jump through these.
 extern "C" uint8_t* g_trampolines[HOOK_COUNT] = {};
-
-static uint8_t* g_trampPool = nullptr;
-static size_t   g_trampUsed = 0;
-
-static uint8_t* AllocTrampoline(size_t size) {
-    if (!g_trampPool) {
-        g_trampPool = (uint8_t*)VirtualAlloc(nullptr, 4096,
-            MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-        if (!g_trampPool) return nullptr;
-    }
-    size = (size + 15) & ~(size_t)15;
-    if (g_trampUsed + size > 4096) return nullptr;
-    uint8_t* r = g_trampPool + g_trampUsed;
-    g_trampUsed += size;
-    return r;
-}
 
 // ---------------------------------------------------------------------------
 // Capture buffers
@@ -942,61 +913,13 @@ static volatile LONG g_thisLock = 0;
 static volatile LONG g_thisOverflow = 0;
 
 // ---------------------------------------------------------------------------
-// Guarded reads. Every memory read a handler makes goes through one of these.
+// Guarded reads. Every memory read a handler makes goes through one of the
+// shared helpers in proxy/gamemem.h: ReadDword / ReadByte (SEH, no range
+// check, 0 on a fault), MemcpyTry (range-checked), and for the 0x100-byte
+// dumps RangeReadable / CopyGuarded (every page committed, readable and not a
+// guard page first: a swallowed guard-page fault would break that page's
+// purpose). Writes: WriteByteTry / WriteFloatTry (range-checked).
 // ---------------------------------------------------------------------------
-
-static bool ReadDword(uint32_t addr, uint32_t* out) {
-    __try {
-        *out = *(const uint32_t*)(uintptr_t)addr;
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        *out = 0;
-        return false;
-    }
-}
-
-static bool ReadByte(uint32_t addr, uint8_t* out) {
-    __try {
-        *out = *(const uint8_t*)(uintptr_t)addr;
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        *out = 0;
-        return false;
-    }
-}
-
-// The dumps are 0x100 bytes from a pointer read out of game memory. Before
-// touching them, make sure every page is committed, readable and not a guard
-// page (a swallowed guard-page fault would break that page's purpose).
-static bool RangeReadable(uint32_t addr, uint32_t n) {
-    if (addr < 0x10000) return false;
-    uint32_t end = addr + n;
-    if (end < addr) return false;
-    uint32_t a = addr;
-    while (a < end) {
-        MEMORY_BASIC_INFORMATION mbi;
-        if (VirtualQuery((const void*)(uintptr_t)a, &mbi, sizeof(mbi)) == 0) return false;
-        if (mbi.State != MEM_COMMIT) return false;
-        DWORD p = mbi.Protect;
-        if (p & (PAGE_GUARD | PAGE_NOACCESS)) return false;
-        if (!(p & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
-                   PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) return false;
-        uint32_t regionEnd = (uint32_t)(uintptr_t)mbi.BaseAddress + (uint32_t)mbi.RegionSize;
-        if (regionEnd <= a) return false;
-        a = regionEnd;
-    }
-    return true;
-}
-
-static uint32_t CopyGuarded(uint32_t addr, uint8_t* out, uint32_t n) {
-    if (!RangeReadable(addr, n)) return 0;
-    __try {
-        memcpy(out, (const void*)(uintptr_t)addr, n);
-        return n;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return 0;
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Hardware watchpoint (docs/PHASE8_addendum_watchpoint.md; Phase 10 A2)
@@ -1722,7 +1645,6 @@ static volatile LONG g_gtClock = 0;            // clock object ([ctrl+0x14]+8), 
 static volatile LONG g_gtReads = 0, g_gtFail = 0, g_gtFallback = 0, g_gtObjChanges = 0, g_gtNotes = 0;
 static volatile LONG g_gtLastTick = 0;
 
-static bool PtrPlausible(uint32_t p);           // defined with the fix tables below
 
 static void GameClockNote(uint32_t ctrl) {
     uint32_t p1 = 0, obj = 0, tick = 0;
@@ -2029,7 +1951,7 @@ static void BuilderHit(const uint8_t* ctx) {
     uint32_t node = head;
     for (;;) {
         if (node == 0) { stop = STOP_NULL; break; }
-        if (node < 0x00010000 || node > g_userMax) { stop = STOP_RANGE; break; }
+        if (node < 0x00010000 || node > Mem_UserMax()) { stop = STOP_RANGE; break; }
         if (n >= WALK_LIMIT) { stop = STOP_LIMIT; break; }
         bool seen = false;
         for (int k = 0; k < n; k++) if (visited[k] == node) { seen = true; break; }
@@ -2237,19 +2159,7 @@ static int g_unitsUsed = 0;
 static volatile LONG g_unitLock = 0;
 static volatile LONG g_unitOverflow = 0;
 
-static bool PtrPlausible(uint32_t p) {
-    return p >= 0x00010000 && p <= g_userMax && (p & 3) == 0;
-}
-
-static bool MemcpyTry(void* out, uint32_t addr, uint32_t n) {
-    if (addr < 0x00010000 || addr > g_userMax) return false;
-    __try {
-        memcpy(out, (const void*)(uintptr_t)addr, n);
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-}
+// PtrPlausible and MemcpyTry: proxy/gamemem.h.
 
 static void FixTablesUpdate(uint32_t unit, const uint32_t* ptrs, uint32_t n);   // fix, below
 static void SoldierSampleUnit(uint32_t unit, uint32_t ctrl, DWORD now, DWORD elapsed);   // below
@@ -3600,40 +3510,10 @@ static void WaypointHit(const uint8_t* ctx) {
 // selected while the fix is off); 3 ALARM, three long low tones (the fix
 // disabled itself, or a key was refused because it is disabled).
 // v42: 5 recording ON, three rising notes (C5 E5 G5); 6 recording OFF, the same falling.
-struct ToneSeg { int hz; int ms; };   // hz 0 = silence
+// The WAV synthesis and playback are shared (proxy/keys.h: ToneSeg, Tone_Make, Tone_Play).
 static uint8_t* g_tones[13] = {};
 
-static uint8_t* MakeTone(const ToneSeg* seg, int n) {
-    const int rate = 22050;
-    int samples = 0;
-    for (int i = 0; i < n; i++) samples += rate * seg[i].ms / 1000;
-    uint32_t dataBytes = (uint32_t)samples * 2;
-    uint8_t* w = (uint8_t*)VirtualAlloc(nullptr, 44 + dataBytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    if (!w) return nullptr;
-    auto put32 = [&](int off, uint32_t v) { memcpy(w + off, &v, 4); };
-    auto put16 = [&](int off, uint16_t v) { memcpy(w + off, &v, 2); };
-    memcpy(w, "RIFF", 4); put32(4, 36 + dataBytes); memcpy(w + 8, "WAVE", 4);
-    memcpy(w + 12, "fmt ", 4); put32(16, 16); put16(20, 1); put16(22, 1);
-    put32(24, rate); put32(28, rate * 2); put16(32, 2); put16(34, 16);
-    memcpy(w + 36, "data", 4); put32(40, dataBytes);
-    int16_t* pcm = (int16_t*)(w + 44);
-    int at = 0;
-    const int fade = rate * 5 / 1000;   // 5 ms ramps, no clicks
-    for (int i = 0; i < n; i++) {
-        int len = rate * seg[i].ms / 1000;
-        for (int k = 0; k < len; k++) {
-            float v = 0.0f;
-            if (seg[i].hz) {
-                float env = 1.0f;
-                if (k < fade) env = (float)k / fade;
-                if (len - 1 - k < fade) env = (float)(len - 1 - k) / fade;
-                v = 0.5f * env * sinf(6.2831853f * seg[i].hz * (float)k / rate);
-            }
-            pcm[at++] = (int16_t)(v * 32767.0f);
-        }
-    }
-    return w;
-}
+static uint8_t* MakeTone(const ToneSeg* seg, int n) { return Tone_Make(seg, n); }
 
 static void FixTonesInit() {
     static const ToneSeg low[] = { { 330, 300 } };
@@ -3658,7 +3538,7 @@ static void FixTonesInit() {
 
 static void FixBeep(int pattern) {
     if (pattern < 0 || pattern > 12 || !g_tones[pattern]) return;
-    if (!PlaySoundA((LPCSTR)g_tones[pattern], nullptr, SND_MEMORY | SND_ASYNC | SND_NODEFAULT))
+    if (!Tone_Play(g_tones[pattern]))
         Log("WARNING: PlaySound failed for tone pattern %d", pattern);
 }
 
@@ -3750,25 +3630,7 @@ static volatile LONG g_stHits = 0, g_stTracked = 0, g_stTurned = 0, g_stNoApex =
     g_stNoDamp = 0;
 static volatile LONG g_stAngle[STEER_NA] = {};
 
-static bool WriteFloatTry(uint32_t addr, float v) {
-    if (addr < 0x00010000 || addr > g_userMax) return false;
-    __try {
-        *(volatile float*)(uintptr_t)addr = v;
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-}
-
-static bool WriteByteTry(uint32_t addr, uint8_t v) {
-    if (addr < 0x00010000 || addr > g_userMax) return false;
-    __try {
-        *(volatile uint8_t*)(uintptr_t)addr = v;
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-}
+// WriteFloatTry / WriteByteTry: proxy/gamemem.h (range-checked, SEH-guarded).
 
 // ---------------------------------------------------------------------------
 // v33 L: look-ahead avoidance (see the header). Runs on whatever thread
@@ -4937,17 +4799,10 @@ static void HandleHit(const uint8_t* ctx, int h) {
 // The handlers are __stdcall and remove that one argument.
 // ---------------------------------------------------------------------------
 
+// The naked stub is HOOK_DETOUR (proxy/hook.h), the same sequence.
 #define DEFINE_HOOK(i)                                                        \
     extern "C" void __stdcall Handler##i(const uint8_t* ctx) { HandleHit(ctx, i); } \
-    __declspec(naked) void Detour##i() {                                      \
-        __asm pushad                                                          \
-        __asm pushfd                                                          \
-        __asm push esp                                                        \
-        __asm call Handler##i                                                 \
-        __asm popfd                                                           \
-        __asm popad                                                           \
-        __asm jmp dword ptr [g_trampolines + (i * 4)]                         \
-    }
+    HOOK_DETOUR(Detour##i, Handler##i, g_trampolines, i)
 
 DEFINE_HOOK(0)
 DEFINE_HOOK(1)
@@ -4967,8 +4822,7 @@ DEFINE_HOOK(14)
 DEFINE_HOOK(15)
 DEFINE_HOOK(16)
 
-typedef void (*DetourFn)();
-static const DetourFn g_detours[HOOK_COUNT] = {
+static const HookDetour g_detours[HOOK_COUNT] = {
     Detour0, Detour1, Detour2, Detour3, Detour4, Detour5, Detour6, Detour7, Detour8, Detour9,
     Detour10, Detour11, Detour12, Detour13, Detour14, Detour15, Detour16
 };
@@ -6047,27 +5901,16 @@ extern "C" __declspec(dllexport) void __stdcall PathfixTestKeys(LONG bits) {
 }
 
 // Real keys count only while a window of this process (the game) has the
-// focus: GetAsyncKeyState also sees keys typed into other programs.
-static bool GameHasFocus() {
-    HWND fg = GetForegroundWindow();
-    if (!fg) return false;
-    DWORD pid = 0;
-    GetWindowThreadProcessId(fg, &pid);
-    return pid == GetCurrentProcessId();
-}
-
+// focus: GetAsyncKeyState also sees keys typed into other programs
+// (Keys_RealDown, proxy/keys.h).
 static bool KeyDown(int fn) {
     if (fn < 0 || fn >= KEY_FUNCS) return false;
     if ((g_testKeys >> fn) & 1) return true;
-    int vk = kKeyVk[fn];
-    return vk && (GetAsyncKeyState(vk) & 0x8000) != 0 && GameHasFocus();
+    return Keys_RealDown(kKeyVk[fn]);
 }
 
 static bool KeyEdge(int fn, bool* down) {
-    bool now = KeyDown(fn);
-    bool edge = now && !*down;
-    *down = now;
-    return edge;
+    return Keys_Edge(KeyDown(fn), down);
 }
 
 // v42 play (no PATHFIX_CAPTURE): I fix on / off, P recording on / off, O marker while recording.
@@ -6279,39 +6122,27 @@ void Pathfix_Install() {   // registered in proxy/fixes.cpp (was InstallHooks in
     Log("  Capture:     %s", g_captureOn ? "ON (PATHFIX_CAPTURE=1): v40 capture, run folder, O marker, P finish"
                                          : "OFF at launch: P starts / stops a recording (v42)");
     Log("  Folder:      %s", LogRunDir());
-    SYSTEM_INFO si;
-    GetSystemInfo(&si);
-    g_userMax = (uint32_t)(uintptr_t)si.lpMaximumApplicationAddress;
-    Log("  Address:     user mode up to 0x%08X (pointer checks use this)", g_userMax);
+    Mem_Init();
+    Log("  Address:     user mode up to 0x%08X (pointer checks use this)", Mem_UserMax());
 
-    HMODULE hMod = GetModuleHandleA("empire.retail.dll");
-    if (!hMod) {
+    uint8_t* base = Hook_GameModule(false, &g_moduleSize);
+    if (!base) {
         Log("REFUSED: empire.retail.dll is not loaded in this process. No hooks installed.");
         return;
     }
-    uint8_t* base = (uint8_t*)hMod;
     g_moduleBaseVal = (uint32_t)(uintptr_t)base;
-    const IMAGE_DOS_HEADER* dos = (const IMAGE_DOS_HEADER*)base;
-    const IMAGE_NT_HEADERS32* nt = (const IMAGE_NT_HEADERS32*)(base + dos->e_lfanew);
-    g_moduleSize = nt->OptionalHeader.SizeOfImage;
-    uint32_t delta = g_moduleBaseVal - ANALYSED_IMAGE_BASE;
+    uint32_t delta = Hook_RebaseDelta(base);
     Log("  Module:      empire.retail.dll at 0x%08X, size 0x%08X (rebase delta 0x%08X)",
         g_moduleBaseVal, g_moduleSize, delta);
 
     // Byte-check every target before touching any. An absolute address inside
-    // the stolen bytes is compared after adding the rebase delta.
+    // the stolen bytes is compared after adding the rebase delta (Hook_Expected).
     bool allMatch = true;
     for (int h = 0; h < HOOK_COUNT; h++) {
         const HookDef& d = g_hookDefs[h];
         uint8_t* target = base + d.rva;
-        uint8_t expect[MAX_STOLEN];
-        memcpy(expect, d.expected, d.len);
-        if (d.relocOff >= 0) {
-            uint32_t abs;
-            memcpy(&abs, expect + d.relocOff, 4);
-            abs += delta;
-            memcpy(expect + d.relocOff, &abs, 4);
-        }
+        uint8_t expect[HOOK_MAX_STOLEN];
+        Hook_Expected(d, delta, expect);
         bool match = memcmp(target, expect, d.len) == 0;
         char seen[64], want[64];
         HexBytes(seen, target, d.len);
@@ -6353,22 +6184,10 @@ void Pathfix_Install() {   // registered in proxy/fixes.cpp (was InstallHooks in
 
     // Build all trampolines first: stolen bytes (as they are in memory, i.e.
     // already rebased) + JMP back.
-    for (int h = 0; h < HOOK_COUNT; h++) {
-        const HookDef& d = g_hookDefs[h];
-        uint8_t* target = base + d.rva;
-        uint8_t* tramp = AllocTrampoline(d.len + 5);
-        if (!tramp) { Log("FATAL: trampoline alloc failed. No hooks installed."); return; }
-        memcpy(tramp, target, d.len);
-        tramp[d.len] = 0xE9;
-        int32_t backRel = (int32_t)((target + d.len) - (tramp + d.len + 5));
-        memcpy(tramp + d.len + 1, &backRel, 4);
-        g_trampolines[h] = tramp;
-
-        memcpy(g_hookInfo[h].original, target, d.len);
-        g_hookInfo[h].target = target;
-        g_hookInfo[h].stolenLen = d.len;
+    if (!Hook_Prepare(base, g_hookDefs, HOOK_COUNT, nullptr, g_trampolines, g_hookSlots)) {
+        Log("FATAL: trampoline alloc failed. No hooks installed.");
+        return;
     }
-    FlushInstructionCache(GetCurrentProcess(), g_trampPool, 4096);
 
     g_gCallSite = (uint32_t)(uintptr_t)(base + G_CALL_SITE_RVA);   // v38
     FixTonesInit();
@@ -6380,22 +6199,7 @@ void Pathfix_Install() {   // registered in proxy/fixes.cpp (was InstallHooks in
     // Armed before patching, so a hit right after the patch is recorded.
     InterlockedExchange(&g_state, 1);
 
-    for (int h = 0; h < HOOK_COUNT; h++) {
-        uint8_t* target = g_hookInfo[h].target;
-        int len = g_hookInfo[h].stolenLen;
-        uint8_t patch[MAX_STOLEN];
-        patch[0] = 0xE9;
-        int32_t jmpRel = (int32_t)((uint8_t*)g_detours[h] - target - 5);
-        memcpy(patch + 1, &jmpRel, 4);
-        memset(patch + 5, 0x90, len - 5);
-
-        DWORD oldProt;
-        VirtualProtect(target, len, PAGE_EXECUTE_READWRITE, &oldProt);
-        memcpy(target, patch, len);
-        VirtualProtect(target, len, oldProt, &oldProt);
-        FlushInstructionCache(GetCurrentProcess(), target, len);
-        g_hookInfo[h].active = true;
-    }
+    Hook_Patch(g_detours, g_hookSlots, HOOK_COUNT);
 
     WatchInstall(base);
     if (!g_selfStart) {   // WatchInstall failed before finding our own range
@@ -6442,14 +6246,7 @@ void Pathfix_Install() {   // registered in proxy/fixes.cpp (was InstallHooks in
 void Pathfix_Remove() {    // registered in proxy/fixes.cpp (was RemoveHooks in hooks_v40.cpp)
     InterlockedExchange(&g_quit, 1);
 
-    for (int h = 0; h < HOOK_COUNT; h++) {
-        if (!g_hookInfo[h].active) continue;
-        DWORD oldProt;
-        VirtualProtect(g_hookInfo[h].target, g_hookInfo[h].stolenLen, PAGE_EXECUTE_READWRITE, &oldProt);
-        memcpy(g_hookInfo[h].target, g_hookInfo[h].original, g_hookInfo[h].stolenLen);
-        VirtualProtect(g_hookInfo[h].target, g_hookInfo[h].stolenLen, oldProt, &oldProt);
-        g_hookInfo[h].active = false;
-    }
+    Hook_Remove(g_hookSlots, HOOK_COUNT);
 
     if (g_dumpThread) {
         WaitForSingleObject(g_dumpThread, 2000);
