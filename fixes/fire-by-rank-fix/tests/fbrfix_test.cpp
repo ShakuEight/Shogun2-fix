@@ -5,7 +5,7 @@
 // state machine contexts and named states, a fire-by-rank task, a unit with soldiers, orders.
 // The battle clock is faked through the same pointer path the proxy reads.
 //
-//   fbrfix_test <game dll> <proxy> <tag> fix|off|selfcheck|allranks|firegrace|probe
+//   fbrfix_test <game dll> <proxy> <tag> fix|off|selfcheck|cap3|firegrace|probe
 //
 //   fix        the fix on (the default): the game's own group test FUN_1017b980 is entered on a
 //              fake group task; the officer outside the shooter class is not waited for, a
@@ -15,7 +15,9 @@
 //              and the exit's second order to him is skipped (early reload)
 //   off        FBRFIX_OFF=1: the same scenes give the game's own answers until Y
 //   selfcheck  20 group tasks with a broken layout switch the fix off for good (Y refused)
-//   allranks   FBRFIX_ALL_RANKS=1: a unit 5 ranks deep gets 5 groups before its first volley
+//   cap3       FBRFIX_ALL_RANKS=0 FBRFIX_QUORUM=0: a unit 5 ranks deep keeps the game's 3 groups,
+//              one man reloading holds his group (fix mode checks the defaults: 5 groups, the
+//              75 % quorum and the fire order hook FUN_101883f0)
 //   firegrace  FBRFIX_EARLY_RELOAD=0 FBRFIX_FIRE_GRACE=20: no early reload orders; the
 //              fire-completed test FUN_1017b9d0 ends the turn 20 ticks after the group's last shot
 //   probe      FBRFIX_PROBE=1: the probe logs transitions of shooting machines only, samples
@@ -42,18 +44,21 @@ static TestCounters g_counters = nullptr;
 #define CHECK(cond, name) do { if (cond) { g_pass++; printf("PASS %s\n", name); } \
                                else { g_fail++; printf("FAIL %s\n", name); } } while (0)
 
-struct Site { uint32_t rva; uint8_t orig[5]; uint8_t stub[6]; int stubLen; };
-// The four probe sites, then the three fix sites. FUN_1017b980 and FUN_1017b9d0 run whole (no
+struct Site { uint32_t rva; int origLen; uint8_t orig[8]; uint8_t stub[8]; int stubLen; };
+// The four probe sites, then the four fix sites. FUN_1017b980 and FUN_1017b9d0 run whole (no
 // stub): they only read the fake objects, so with the fix off the game's own answer is checked.
-static const int SITES = 7, PROBE_SITES = 4;
+// The stubs sit right after the stolen bytes.
+static const int SITES = 8, PROBE_SITES = 4;
 static const Site kSites[SITES] = {
-    { 0x1374CF0, { 0x56, 0x8B, 0xF1, 0x57, 0x56 }, { 0x5E, 0x5F, 0x5E, 0xC3 }, 4 },        // pop esi; pop edi; pop esi; ret
-    { 0x1374D0B, { 0x89, 0x7E, 0x04, 0x8B, 0xCF }, { 0xC3 }, 1 },                           // ret (entered by CALL)
-    { 0x3DB8F0,  { 0x53, 0x56, 0x57, 0x8B, 0xF9 }, { 0x5F, 0x5E, 0x5B, 0xC2, 0x04, 0x00 }, 6 },  // pop edi/esi/ebx; ret 4
-    { 0x3DB740,  { 0x53, 0x56, 0x57, 0x8B, 0xF9 }, { 0x5F, 0x5E, 0x5B, 0xC2, 0x04, 0x00 }, 6 },
-    { 0x17B980,  { 0x53, 0x56, 0x57, 0x8B, 0xF9 }, { 0 }, 0 },                              // runs whole
-    { 0x188290,  { 0x83, 0xEC, 0x50, 0x8B, 0xC1 }, { 0x83, 0xC4, 0x50, 0xC2, 0x08, 0x00 }, 6 },  // add esp,0x50; ret 8
-    { 0x17B9D0,  { 0x53, 0x56, 0x57, 0x8B, 0xF1 }, { 0 }, 0 },                              // runs whole
+    { 0x1374CF0, 5, { 0x56, 0x8B, 0xF1, 0x57, 0x56 }, { 0x5E, 0x5F, 0x5E, 0xC3 }, 4 },        // pop esi; pop edi; pop esi; ret
+    { 0x1374D0B, 5, { 0x89, 0x7E, 0x04, 0x8B, 0xCF }, { 0xC3 }, 1 },                           // ret (entered by CALL)
+    { 0x3DB8F0,  5, { 0x53, 0x56, 0x57, 0x8B, 0xF9 }, { 0x5F, 0x5E, 0x5B, 0xC2, 0x04, 0x00 }, 6 },  // pop edi/esi/ebx; ret 4
+    { 0x3DB740,  5, { 0x53, 0x56, 0x57, 0x8B, 0xF9 }, { 0x5F, 0x5E, 0x5B, 0xC2, 0x04, 0x00 }, 6 },
+    { 0x17B980,  5, { 0x53, 0x56, 0x57, 0x8B, 0xF9 }, { 0 }, 0 },                              // runs whole
+    { 0x188290,  5, { 0x83, 0xEC, 0x50, 0x8B, 0xC1 }, { 0x83, 0xC4, 0x50, 0xC2, 0x08, 0x00 }, 6 },  // add esp,0x50; ret 8
+    { 0x17B9D0,  5, { 0x53, 0x56, 0x57, 0x8B, 0xF1 }, { 0 }, 0 },                              // runs whole
+    { 0x1883F0,  8, { 0x83, 0xEC, 0x50, 0x56, 0x8B, 0x74, 0x24, 0x58 },
+                    { 0x5E, 0x83, 0xC4, 0x50, 0xC2, 0x08, 0x00 }, 7 },                         // pop esi; add esp,0x50; ret 8
 };
 
 static void Patch(uint8_t* at, const void* bytes, size_t n) {
@@ -158,7 +163,7 @@ static void Transition(uint8_t* ctx, uint8_t* oldState, uint8_t* next) {
 static long C(int i) { long c[32] = {}; g_counters(c); return c[i]; }
 enum { C_PROBE = 0, C_FIXON = 7, C_READY = 8, C_GRACE = 9, C_RELOADING = 10, C_WAITING = 11, C_EXCLUDED = 12,
        C_SKIPPED = 13, C_GIVEN = 14, C_BADTASK = 15, C_ALLRANKS = 16, C_EARLY = 17, C_DONE = 18, C_FIRING = 19,
-       C_CUT = 20, C_NOTFIRED = 21, C_EXITSKIP = 22 };
+       C_CUT = 20, C_NOTFIRED = 21, C_EXITSKIP = 22, C_QUORUM = 23, C_QUORUMWAIT = 24, C_SATOUT = 25 };
 
 static int Lines(const char* dir, const char* name) {
     char path[MAX_PATH];
@@ -311,7 +316,7 @@ static void RunFix(bool on) {
         CHECK(g_base[kSites[i].rva] == 0xE9, name);
     }
     bool probeUntouched = true;
-    for (int i = 0; i < PROBE_SITES; i++) probeUntouched &= memcmp(g_base + kSites[i].rva, kSites[i].orig, 5) == 0;
+    for (int i = 0; i < PROBE_SITES; i++) probeUntouched &= memcmp(g_base + kSites[i].rva, kSites[i].orig, kSites[i].origLen) == 0;
     CHECK(probeUntouched, "X9 probe sites untouched without FBRFIX_PROBE");
 
     Group g = MakeGroup();
@@ -424,6 +429,73 @@ static void EarlyScene(bool on) {
     CHECK(r == 1 && C(C_EARLY) == early + 1, "E6 ... and one once it is done");
 }
 
+// --- quorum: 16 gun men in two groups of 8 (group 0 = soldiers 0..7), the task at 2 groups ------
+static Group MakeQuorumGroup() {
+    Group g = MakeGroup();
+    Unit u = MakeUnit(16);
+    for (int i = 0; i < 16; i++) {
+        g.table[i] = i / 8;
+        Put32(u.s[i], 0x48C, 8);
+        SetReady(u.s[i], true);
+        SetReload(u.s[i], 0.0f);
+    }
+    g.u = u;
+    Put32(g.task, 0x04, Addr(u.unit));
+    Put32(g.task, 0x38, 2);
+    return g;
+}
+
+static void Reloading(uint8_t* s, float t) { SetReload(s, t); SetReady(s, false); }   // his reload order is open
+
+static void QuorumScene(bool on) {
+    Group g = MakeQuorumGroup();
+    // 1: 3 of 8 still reloading (5 of 8 = 62 % ready): the group waits
+    Reloading(g.u.s[1], 5.0f);
+    Reloading(g.u.s[2], 5.0f);
+    Reloading(g.u.s[3], 5.0f);
+    uint32_t r = 0;
+    for (uint32_t t = 1000; t < 1020; t++) { SetTick(t); r = Test(g); }
+    CHECK(r == 0 && C(C_QUORUM) == 0, "Q1 3 of 8 men reloading (62 percent ready): the group waits");
+    // 2: man 3 is loaded: 6 of 8 (75 %) ready, the group fires 10 ticks later
+    SetReload(g.u.s[3], 0.0f);
+    SetReady(g.u.s[3], true);
+    for (uint32_t t = 1020; t < 1030; t++) { SetTick(t); r = Test(g); }
+    if (on) CHECK(r == 0 && C(C_QUORUMWAIT) == 10, "Q2 75 percent ready: the group waits 1 s more");
+    SetTick(1030);
+    r = Test(g);
+    if (on) CHECK(r == 1 && C(C_QUORUM) == 1, "Q2b ... then fires without the 2 men reloading");
+    else    CHECK(r == 0 && C(C_QUORUM) == 0, "Q2 fix off: the game waits for every man (vanilla)");
+    // 3: the fire orders: none for the two men reloading
+    GroupOrder fire = (GroupOrder)(void*)(g_base + 0x1883F0);
+    uint8_t* target = Zalloc(0x40);
+    for (int i = 0; i < 8; i++) fire(g.task, nullptr, g.u.s[i], (int)Addr(target));
+    if (on) CHECK(C(C_SATOUT) == 2, "Q3 no fire order for the 2 men reloading, 6 given");
+    else    CHECK(C(C_SATOUT) == 0, "Q3 fix off: every man gets his fire order (vanilla)");
+    if (!on) return;
+    // 4: the 6 fire; the 2 who sat out do not hold the fire-completed test
+    g.task[0x44] = 1;
+    for (int i = 0; i < 8; i++) if (i != 1 && i != 2) SetReload(g.u.s[i], 19.8f);
+    long early = C(C_EARLY), done = C(C_DONE);
+    SetTick(1031);
+    r = Done(g);
+    CHECK(r == 1 && C(C_DONE) == done + 1 && C(C_EARLY) == early + 6,
+          "Q4 the volley is done once the 6 have fired; the 2 reloading men sat it out");
+    // 5: the exit's reload order: not again for a man who sat out and is still reloading
+    long skipped = C(C_EXITSKIP);
+    GroupOrder order = (GroupOrder)(void*)(g_base + 0x188290);
+    order(g.task, nullptr, g.u.s[1], 1);
+    CHECK(C(C_EXITSKIP) == skipped + 1, "Q5 the exit's order skips a man who sat out, still reloading");
+}
+
+// FBRFIX_QUORUM=0: one man reloading holds the group, as in the game.
+static void QuorumOffScene() {
+    Group g = MakeQuorumGroup();
+    Reloading(g.u.s[1], 5.0f);
+    uint32_t r = 0;
+    for (uint32_t t = 1100; t < 1140; t++) { SetTick(t); r = Test(g); }
+    CHECK(r == 0 && C(C_QUORUM) == 0, "Q0 FBRFIX_QUORUM=0: 7 of 8 ready, the group still waits for the man reloading");
+}
+
 // FBRFIX_FIRE_GRACE=20 with FBRFIX_EARLY_RELOAD=0: the turn ends 2 s after the group's last shot.
 static void FireGraceScene() {
     Group g = MakeGroup();
@@ -460,8 +532,8 @@ static void DeepScene(bool expectRaised) {
     Test(g);
     uint32_t n;
     memcpy(&n, g.task + 0x38, 4);
-    if (expectRaised) CHECK(n == 5 && C(C_ALLRANKS) == 1, "A1 FBRFIX_ALL_RANKS=1: the group count is raised to the 5 ranks");
-    else              CHECK(n == 3 && C(C_ALLRANKS) == 0, "A1 the group count stays at the game's 3 without the option");
+    if (expectRaised) CHECK(n == 5 && C(C_ALLRANKS) == 1, "A1 every rank fires: the group count is raised to the 5 ranks");
+    else              CHECK(n == 3 && C(C_ALLRANKS) == 0, "A1 FBRFIX_ALL_RANKS=0: the group count stays at the game's 3");
     Put32(g.task, 0x40, 1);   // a later group: never raised there
     Put32(g.task, 0x38, 3);
     SetTick(950);
@@ -485,16 +557,18 @@ static void RunSelfcheck() {
 int main(int argc, char** argv) {
     setvbuf(stdout, nullptr, _IONBF, 0);
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
-    if (argc < 5) { printf("usage: fbrfix_test <game dll> <proxy> <tag> fix|off|selfcheck|allranks|firegrace|probe\n"); return 2; }
+    if (argc < 5) { printf("usage: fbrfix_test <game dll> <proxy> <tag> fix|off|selfcheck|cap3|firegrace|probe\n"); return 2; }
     const char* mode = argv[4];
     bool probe = strcmp(mode, "probe") == 0;
     bool off = strcmp(mode, "off") == 0;
     bool selfcheck = strcmp(mode, "selfcheck") == 0;
-    bool allRanks = strcmp(mode, "allranks") == 0;
+    bool cap3 = strcmp(mode, "cap3") == 0;
     bool fireGrace = strcmp(mode, "firegrace") == 0;
     SetEnvironmentVariableA("FBRFIX_PROBE", probe ? "1" : nullptr);
     SetEnvironmentVariableA("FBRFIX_OFF", off ? "1" : nullptr);
-    SetEnvironmentVariableA("FBRFIX_ALL_RANKS", allRanks ? "1" : nullptr);
+    SetEnvironmentVariableA("FBRFIX_ALL_RANKS", cap3 ? "0" : nullptr);
+    SetEnvironmentVariableA("FBRFIX_QUORUM", cap3 ? "0" : nullptr);
+    SetEnvironmentVariableA("FBRFIX_QUORUM_WAIT", nullptr);
     SetEnvironmentVariableA("FBRFIX_EARLY_RELOAD", fireGrace ? "0" : nullptr);
     SetEnvironmentVariableA("FBRFIX_FIRE_GRACE", fireGrace ? "20" : nullptr);
     SetEnvironmentVariableA("FBRFIX_GRACE", nullptr);
@@ -505,8 +579,8 @@ int main(int argc, char** argv) {
     if (!game) { printf("cannot map game dll: %lu\n", GetLastError()); return 1; }
     g_base = (uint8_t*)game;
     for (int i = 0; i < SITES; i++) {
-        if (memcmp(g_base + kSites[i].rva, kSites[i].orig, 5) != 0) { printf("site %X differs\n", kSites[i].rva); return 1; }
-        if (kSites[i].stubLen) Patch(g_base + kSites[i].rva + 5, kSites[i].stub, kSites[i].stubLen);
+        if (memcmp(g_base + kSites[i].rva, kSites[i].orig, kSites[i].origLen) != 0) { printf("site %X differs\n", kSites[i].rva); return 1; }
+        if (kSites[i].stubLen) Patch(g_base + kSites[i].rva + kSites[i].origLen, kSites[i].stub, kSites[i].stubLen);
     }
     MakeClock();
 
@@ -531,13 +605,13 @@ int main(int argc, char** argv) {
     } else {
         CHECK(C(C_PROBE) == 0, "N1 probe off without FBRFIX_PROBE");
         if (selfcheck) RunSelfcheck();
-        else if (allRanks) DeepScene(true);
+        else if (cap3) { DeepScene(false); QuorumOffScene(); }
         else if (fireGrace) FireGraceScene();
-        else { RunFix(!off); EarlyScene(!off); if (!off) DeepScene(false); }
+        else { RunFix(!off); EarlyScene(!off); QuorumScene(!off); if (!off) DeepScene(true); }
         FreeLibrary(proxy);
     }
     bool restored = true;
-    for (int i = 0; i < SITES; i++) restored &= memcmp(g_base + kSites[i].rva, kSites[i].orig, 5) == 0;
+    for (int i = 0; i < SITES; i++) restored &= memcmp(g_base + kSites[i].rva, kSites[i].orig, kSites[i].origLen) == 0;
     CHECK(restored, "U1 after unload every site holds its original bytes");
     printf("RESULT %d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

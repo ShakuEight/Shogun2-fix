@@ -57,8 +57,10 @@ States (getters at vtable + 0x58 .. + 0x70): START, REFORM, then the cycle:
    gets a ready / reload order (task slot + 0x84 = `FUN_10188290`: order type 5, with a kneel
    flag for every group but the last). Ends when every man of the current group passes the
    ready test (`FUN_1017b980`, its only caller).
-2. **ORDER_GROUP_FIRE**: fire orders for the current group (each carries the target record,
-   `docs/re/artillery_aim_x86.md`).
+2. **ORDER_GROUP_FIRE**: fire orders for the current group (enter `FUN_1019a760`: sets + 0x44,
+   collects the group's men with their targets and calls task slot + 0x80 = `FUN_101883f0`, the
+   fire order for one man, which builds an order with the target record,
+   `docs/re/artillery_aim_x86.md`). No check of the man's reload time there.
 3. **WAIT_FOR_GROUP_FIRE_COMPLETED**: ends when every man of the group passes the ready test
    again (his fire order is done; the test is `FUN_1017b9d0`, its only caller, which asks task
    slot + 0x7c, a thin wrapper around `FUN_103cbe40`). Its exit (`FUN_101be8f0`) gives the

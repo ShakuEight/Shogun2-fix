@@ -55,9 +55,9 @@ change none of these rows. The user's theory pointed at the right column.
 
 ## 5. The fix
 
-Three entry hooks on functions that only the group fire task uses: `FUN_1017b980` and
-`FUN_1017b9d0` have one caller each (the two wait states), and `FUN_10188290` is a slot of the
-task's vtable.
+Four entry hooks on functions that only the group fire task uses: `FUN_1017b980` and
+`FUN_1017b9d0` have one caller each (the two wait states), `FUN_10188290` and `FUN_101883f0`
+are slots of the task's vtable.
 
 1. **`FUN_10188290`** gives one man his ready / reload order. For a man whose + 0x48C differs
    from his unit's most common value, it returns at once, with the function's own `RET 8`. So the
@@ -92,9 +92,19 @@ themselves and stay untouched.
    order to a man who had his early one this turn and is still reloading. Option
    `FBRFIX_FIRE_GRACE` (off) also ends the turn a set time after the group's last shot.
 
-Option `FBRFIX_ALL_RANKS=1` raises the group count before the first volley to the number of
-ranks present (at most 8). It is off by default, because it changes the game's design (see
-README.md).
+4. **Every rank fires** (part 3, user decision; `FBRFIX_ALL_RANKS=0` turns it off): in the group
+   test, before the first volley (group 0, count 3) the group count is raised to the highest
+   group in the task's table + 1 (at most 8). The rest of the task already handles more groups
+   (kneel flag, wrap at the count).
+5. **Quorum** (part 3, user decision: 75 %, then 1 s). In the group test, while shooters of the
+   group are still reloading: once `FBRFIX_QUORUM` percent of them are loaded and ready (a loaded
+   man counts as ready after the grace time), a timer per wait starts; after
+   `FBRFIX_QUORUM_WAIT` ticks the test answers "ready". The fire orders that follow
+   (`ORDER_GROUP_FIRE` enter `FUN_1019a760` calls task slot + 0x80 = `FUN_101883f0` once per man,
+   only referenced from that vtable) are skipped for a man whose reload time is above 0
+   (fourth hook, `HOOK_RETURN` with the function's `RET 8`): he keeps his reload order and sits
+   the volley out. The per-soldier table marks him (task, tick), so the fire-completed hook
+   does not count his reload time as a shot and the exit's reload order to him is skipped.
 
 Self-check: 20 group tasks in a row without the decoded layout (and no answer given yet) switch
 the fix off for the session. All reads and the one write are SEH-guarded. The hooks run on game
@@ -118,14 +128,19 @@ Part 2 (early reload), same replays, fix on throughout: the 90th percentile of t
 shot to the reload starting fell from 7 to 9 s to 2.5 s (fire at will 2.2 s), and in the Hattori
 replay a man's median time from shot to shot from 29 to 32 s to 23 to 24 s (fire at will 25 to
 26 s). Shot totals are within the replay drift; with every rank firing as well, the Hattori units
-fired about 30 % more. The table is in README.md. Harness: 28 + 22 + 5 + 4 + 5 + 27 checks.
+fired about 30 % more. The table is in README.md.
+
+Part 3 (every rank, quorum, the defaults): in the Hattori replay a restarted task found 3 of 39
+men reloading and fired 2.5 s into the wait instead of 17.8 s; the Ikko Ikki and generic runs
+never had a quorum case and are identical to part 2 with every rank firing. Harness: 35 + 26 +
+5 + 5 + 5 + 28 checks.
 
 ## 7. Open
 
 - No public release source yet (`release/`), so no release equivalence run.
-- The game's own remaining waits: one man still reloading holds his group, and a restarted task
-  (the unit re-forms) always begins with group 0, even when group 0 has just fired. A fix would
-  let the next loaded group fire instead.
+- The game's own remaining wait: a restarted task (the unit re-forms) always begins with group
+  0, even when group 0 has just fired (the quorum covers it only when few of group 0 fired). A
+  fix would let the next loaded group fire instead.
 - Not decided: whether every rank should fire (`FBRFIX_ALL_RANKS`), and the grace time.
 - Measured on matchlock ashigaru only. The other gun units with fire by rank (matchlock samurai,
   including the Hattori samurai with the same sword officer, and warrior monks) were not run.

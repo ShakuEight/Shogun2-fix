@@ -13,7 +13,7 @@
 //   2. Every unit: the wait before the first volley lasts about 10 s, because it waits for the
 //      last man to finish his ready pose; also later waits hang on single stragglers.
 //
-// The fix (three entry hooks, on from launch; FBRFIX_OFF=1 starts it off, Y toggles it):
+// The fix (four entry hooks, on from launch; FBRFIX_OFF=1 starts it off, Y toggles it):
 //   - FUN_10188290 (the group task's order to get ready / reload): skipped for a man who is not
 //     of his unit's shooter class (soldier +0x48C differs from the unit's most common value;
 //     the sword officer is the only such man seen), so he never gets an order he cannot finish.
@@ -28,9 +28,14 @@
 //     his fire order is done, and answers the test for those men (FBRFIX_EARLY_RELOAD=0 turns
 //     it off). FBRFIX_FIRE_GRACE=<ticks> (default 0 = off) also ends the turn that many ticks
 //     after the group's last shot; the men who did not fire keep their load.
-//   - Option FBRFIX_ALL_RANKS=1 (off by default): the game caps the task at 3 groups, so in a
-//     formation deeper than 3 ranks the rear ranks never fire; with the option every rank fires
-//     in turn (the group count is raised before the first volley).
+//   - Every rank fires (part 3, FBRFIX_ALL_RANKS=0 turns it off): the game caps the task at 3
+//     groups, so in a formation deeper than 3 ranks the rear ranks never fire; the group count
+//     is raised to the ranks present before the first volley.
+//   - Quorum (part 3): one man still reloading held his whole group. Once FBRFIX_QUORUM percent
+//     (default 75) of the group's shooters are loaded and ready, the group fires after
+//     FBRFIX_QUORUM_WAIT more ticks (default 10 = 1 s); FUN_101883f0 (the task's fire order
+//     for one man) gives no fire order to a man still reloading, so he sits the volley out
+//     and does not hold the fire-completed test either.
 //
 // The probe (FBRFIX_PROBE=1, research) hooks the game's generic state-machine runner and the two
 // soldier order functions and writes <game>\fbrfix_runs\<stamp>\:
@@ -81,6 +86,7 @@ enum {
     H_GROUP_READY,     // FUN_1017b980 entry: group task "current group loaded and ready" (the fix)
     H_GROUP_ORDER,     // FUN_10188290 entry: group task gives one man his ready / reload order (the fix)
     H_GROUP_DONE,      // FUN_1017b9d0 entry: group task "current group's fire orders done" (the fix, early reload)
+    H_GROUP_FIRE,      // FUN_101883f0 entry: group task gives one man his fire order (the fix, quorum)
     HOOK_COUNT
 };
 
@@ -101,6 +107,9 @@ static const HookDef g_hookDefs[HOOK_COUNT] = {
     // docs/re/prologues_fbrfix_done.txt
     { "FUN_1017b9d0", "group fire completed test", 0x17B9D0, 5,
       { 0x53, 0x56, 0x57, 0x8B, 0xF1 }, -1, false },             // PUSH EBX; PUSH ESI; PUSH EDI; MOV ESI,ECX
+    // docs/re/prologues_fbrfix_fire.txt (only referenced from the group task vtable, slot +0x80)
+    { "FUN_101883f0", "group fire order", 0x1883F0, 8,
+      { 0x83, 0xEC, 0x50, 0x56, 0x8B, 0x74, 0x24, 0x58 }, -1, false },   // SUB ESP,0x50; PUSH ESI; MOV ESI,[ESP+0x58]
 };
 
 static HookSlot g_slots[HOOK_COUNT] = {};
@@ -656,7 +665,7 @@ static volatile LONG g_fOrderSkipped = 0; // ready / reload orders not given to 
 static volatile LONG g_fOrderGiven = 0;
 static volatile LONG g_fBadTask = 0;      // group task fields implausible (self-check)
 static FILE* g_fFix = nullptr;            // probe only: fbr_fix.csv
-static bool g_allRanks = false;           // FBRFIX_ALL_RANKS=1: every rank fires in turn (default: 3 groups, vanilla)
+static bool g_allRanks = true;            // every rank fires in turn; FBRFIX_ALL_RANKS=0: 3 groups as in the game
 static const uint32_t MAX_GROUPS = 8;
 static volatile LONG g_fAllRanks = 0;     // group tasks whose count was raised
 // Early reload (FUN_1017b9d0 hook)
@@ -671,6 +680,12 @@ static volatile LONG g_fFiring = 0;       // ... answered "not done": a shooter 
 static volatile LONG g_fCut = 0;          // turns ended by the fire grace
 static volatile LONG g_fNotFired = 0;     // shooters who had not fired when their turn was cut
 static volatile LONG g_fExitSkipped = 0;  // second reload orders not given to men already reloading
+// Quorum (FUN_1017b980 answer, FUN_101883f0 hook)
+static uint32_t g_quorum = 75;            // FBRFIX_QUORUM=<percent> of shooters loaded and ready (0 = off)
+static uint32_t g_quorumWait = 10;        // FBRFIX_QUORUM_WAIT=<ticks> after the quorum is reached
+static volatile LONG g_fQuorum = 0;       // group tests answered "fire" with men still reloading
+static volatile LONG g_fQuorumWait = 0;   // ... "not yet": quorum reached, within the wait
+static volatile LONG g_fSatOut = 0;       // fire orders not given to men still reloading
 
 // The unit's shooter class: the most common soldier +0x48C value among its men.
 static bool ShooterClass(uint32_t unit, uint32_t* cls) {
@@ -695,7 +710,9 @@ static bool ShooterClass(uint32_t unit, uint32_t* cls) {
 
 // How long the task has been asking about its current group: consecutive calls (one per tick
 // while the wait state runs) with the same group number.
-struct WaitRec { uint32_t task, group, first, last; };
+// qfirst: the first tick of this wait with the quorum reached (QUORUM_NONE: not reached yet).
+struct WaitRec { uint32_t task, group, first, last, qfirst; };
+static const uint32_t QUORUM_NONE = 0xFFFFFFFF;
 static WaitRec g_waits[64];
 static volatile LONG g_waitLock = 0;
 
@@ -708,11 +725,32 @@ static uint32_t WaitTicks(uint32_t task, uint32_t group, uint32_t tick) {
         if (g_waits[i].last < oldest->last) oldest = &g_waits[i];
     }
     if (!w) { w = oldest; w->task = task; w->group = group + 1; }
-    if (w->group != group || tick < w->last || tick - w->last > 3) { w->group = group; w->first = tick; }
+    if (w->group != group || tick < w->last || tick - w->last > 3) {
+        w->group = group; w->first = tick; w->qfirst = QUORUM_NONE;
+    }
     w->last = tick;
     uint32_t waited = tick - w->first;
     InterlockedExchange(&g_waitLock, 0);
     return waited;
+}
+
+// Ticks since the quorum was first reached in the task's current wait (WaitTicks ran this tick);
+// a call without the quorum starts it again.
+static uint32_t QuorumTicks(uint32_t task, uint32_t tick, bool reached) {
+    uint32_t q = 0;
+    while (InterlockedCompareExchange(&g_waitLock, 1, 0) != 0) {}
+    for (int i = 0; i < 64; i++) {
+        WaitRec& w = g_waits[i];
+        if (w.task != task) continue;
+        if (!reached) w.qfirst = QUORUM_NONE;
+        else {
+            if (w.qfirst == QUORUM_NONE) w.qfirst = tick;
+            q = tick - w.qfirst;
+        }
+        break;
+    }
+    InterlockedExchange(&g_waitLock, 0);
+    return q;
 }
 
 static void FixRow(uint32_t task, uint32_t unit, uint32_t group, uint32_t men, uint32_t excluded, uint32_t notLoaded,
@@ -728,7 +766,7 @@ static void FixRow(uint32_t task, uint32_t unit, uint32_t group, uint32_t men, u
 // Self-check: a group task whose fields do not look like one. 20 in a row switch the fix off.
 static void BadTask() {
     LONG n = InterlockedIncrement(&g_fBadTask);
-    if (n >= 20 && g_fReadyAll + g_fReadyGrace + g_fNotLoaded + g_fWaiting == 0 &&
+    if (n >= 20 && g_fReadyAll + g_fReadyGrace + g_fNotLoaded + g_fWaiting + g_fQuorum + g_fQuorumWait == 0 &&
         !InterlockedExchange(&g_fixDisabled, 1)) {
         InterlockedExchange(&g_fixOn, 0);
         Log("fbrfix: DISABLED for this session, the first %ld group tasks did not have the decoded layout", n);
@@ -747,9 +785,10 @@ static uint32_t HandleGroupReady(const uint8_t* ctx) {
         BadTask();
         return HOOK_CONTINUE;
     }
-    // Option FBRFIX_ALL_RANKS=1: the task caps its group count at 3 (constructor FUN_101295d0) while
-    // the formation numbers its ranks 0..n-1, so ranks 4+ never fire. Before the first volley
-    // (group 0) raise the count to the number of ranks present (at most MAX_GROUPS).
+    // Every rank fires (FBRFIX_ALL_RANKS=0 turns it off): the task caps its group count at 3
+    // (constructor FUN_101295d0) while the formation numbers its ranks 0..n-1, so ranks 4+ never
+    // fire. Before the first volley (group 0) raise the count to the number of ranks present (at
+    // most MAX_GROUPS).
     if (g_allRanks && group == 0 && groups == 3) {
         uint32_t top = 0;
         for (uint32_t i = 0; i < count; i++) {
@@ -783,7 +822,13 @@ static uint32_t HandleGroupReady(const uint8_t* ctx) {
     if (excluded) InterlockedExchangeAdd(&g_fExcludedMen, (LONG)excluded);
     const char* answer;
     uint32_t result;
-    if (notLoaded) { result = 0; answer = "reloading"; InterlockedIncrement(&g_fNotLoaded); }
+    // Quorum: shooters loaded and ready (a loaded man counts as ready once the grace time is over)
+    uint32_t readyToFire = men - notLoaded - (waited >= g_grace ? 0 : notReady);
+    bool quorum = notLoaded && g_quorum && readyToFire * 100 >= g_quorum * men;
+    uint32_t q = QuorumTicks(task, tick, quorum);
+    if (quorum && q >= g_quorumWait) { result = 1; answer = "quorum"; InterlockedIncrement(&g_fQuorum); }
+    else if (quorum) { result = 0; answer = "quorum_wait"; InterlockedIncrement(&g_fQuorumWait); }
+    else if (notLoaded) { result = 0; answer = "reloading"; InterlockedIncrement(&g_fNotLoaded); }
     else if (!notReady) { result = 1; answer = "ready"; InterlockedIncrement(&g_fReadyAll); }
     else if (waited >= g_grace) { result = 1; answer = "grace"; InterlockedIncrement(&g_fReadyGrace); }
     else { result = 0; answer = "waiting"; InterlockedIncrement(&g_fWaiting); }
@@ -830,8 +875,9 @@ static uint32_t CurrentTurn(uint32_t task, uint32_t tick) {
     return key;
 }
 
-// Soldiers who had their early reload order: soldier -> (task, turn key).
-struct EarlyRec { uint32_t soldier, task, key; };
+// Soldiers who had their early reload order: soldier -> (task, turn key); and soldiers who sat
+// a volley out (no fire order while reloading): (satTask, satTick).
+struct EarlyRec { uint32_t soldier, task, key, satTask, satTick; };
 static const int EARLY_TABLE = 4096;   // power of two
 static EarlyRec g_early[EARLY_TABLE];
 static volatile LONG g_earlyLock = 0;
@@ -846,7 +892,7 @@ static EarlyRec* EarlyOf(uint32_t s, bool add) {
         if (e.soldier == 0) { if (add) { e.soldier = s; r = &e; } break; }
     }
     if (!r && add) r = &g_early[h];   // table crowded: reuse the home slot
-    if (r && add && r->soldier != s) { r->soldier = s; r->task = 0; r->key = 0; }
+    if (r && add && r->soldier != s) { r->soldier = s; r->task = 0; r->key = 0; r->satTask = 0; r->satTick = 0; }
     InterlockedExchange(&g_earlyLock, 0);
     return r;
 }
@@ -854,6 +900,34 @@ static EarlyRec* EarlyOf(uint32_t s, bool add) {
 static bool HadEarly(uint32_t s, uint32_t task, uint32_t key) {
     EarlyRec* e = EarlyOf(s, false);
     return e && e->task == task && e->key == key;
+}
+
+// The man sat out the volley whose fire-completed turn started at turnFirst (the fire orders come
+// on the tick before the turn's first test).
+static bool SatOut(uint32_t s, uint32_t task, uint32_t turnFirst) {
+    EarlyRec* e = EarlyOf(s, false);
+    return e && e->satTask == task && e->satTick + 5 >= turnFirst && e->satTick <= turnFirst + 1;
+}
+
+// FUN_101883f0 entry (ECX = group task, arg1 = soldier, arg2 = target record): the group's fire
+// order for one man. A man still reloading (the group fired on the quorum) gets none: he goes on
+// reloading and sits this volley out.
+static uint32_t HandleGroupFire(const uint8_t* ctx) {
+    if (!g_fixOn || !g_quorum) return HOOK_CONTINUE;
+    uint32_t task = *(const uint32_t*)(ctx + FBR_OFF_ECX);
+    uint32_t s = *(const uint32_t*)(ctx + FBR_OFF_ARG1);
+    float reload = 0.0f;
+    if (!IsGroupTask(task) || !MemcpyTry(&reload, s + SOL_OFF_RELOAD, 4) || reload <= 0.0f) return HOOK_CONTINUE;
+    EarlyRec* e = EarlyOf(s, true);
+    if (e) { e->satTask = task; e->satTick = Tick(); }
+    InterlockedIncrement(&g_fSatOut);
+    if (g_fFix) {
+        uint32_t unit = 0, group = 0;
+        Rd32(task + TASK_OFF_UNIT, &unit);
+        Rd32(task + GRP_OFF_CUR, &group);
+        FixRow(task, unit, group, 0, 0, 1, 0, 0, "sat_out");
+    }
+    return HOOK_RETURN(0);   // the function's own RET 8
 }
 
 // FUN_1017b9d0 entry (ECX = group task): "has every man of the current group finished his fire
@@ -902,6 +976,7 @@ static uint32_t HandleGroupDone(const uint8_t* ctx) {
     for (uint32_t k = 0; k < nTodo; k++) {
         uint32_t s = todo[k];
         if (HadEarly(s, task, key)) continue;
+        if (SatOut(s, task, key >> 4)) { fired--; continue; }   // reloading, had no fire order: not his volley
         if ((g_ready(s) & 0xFF) == 0) { firing++; continue; }   // fired, fire order not done yet
         if (!g_earlyReload) continue;                          // done with his fire order: as the game counts it
         order(task, 0, s, 1);                                  // the exit's own call: kneeling reload order
@@ -926,8 +1001,8 @@ static uint32_t HandleGroupDone(const uint8_t* ctx) {
 
 // FUN_10188290 entry (ECX = group task, arg1 = soldier, arg2 = after-fire flag): no ready /
 // reload order for a man outside the unit's shooter class, and no second reload order for a man
-// who had his early one this turn and is still reloading (the exit FUN_101be8f0 orders the whole
-// group).
+// still reloading who had his early one this turn or sat the volley out (the exit FUN_101be8f0
+// orders the whole group).
 static uint32_t HandleGroupOrder(const uint8_t* ctx) {
     if (!g_fixOn) return HOOK_CONTINUE;
     uint32_t task = *(const uint32_t*)(ctx + FBR_OFF_ECX);
@@ -938,7 +1013,8 @@ static uint32_t HandleGroupOrder(const uint8_t* ctx) {
     if (c == cls) {
         float reload = 0.0f;
         uint32_t key = g_earlyReload ? CurrentTurn(task, Tick()) : 0;
-        if (key && MemcpyTry(&reload, s + SOL_OFF_RELOAD, 4) && reload > 0.0f && HadEarly(s, task, key)) {
+        if (key && MemcpyTry(&reload, s + SOL_OFF_RELOAD, 4) && reload > 0.0f &&
+            (HadEarly(s, task, key) || SatOut(s, task, key >> 4))) {
             InterlockedIncrement(&g_fExitSkipped);
             return HOOK_RETURN(0);
         }
@@ -979,6 +1055,7 @@ extern "C" void __stdcall FbrHandler3(const uint8_t* ctx) { HandleOrder(ctx, 'B'
 extern "C" uint32_t __stdcall FbrHandler4(const uint8_t* ctx) { return HandleGroupReady(ctx); }
 extern "C" uint32_t __stdcall FbrHandler5(const uint8_t* ctx) { return HandleGroupOrder(ctx); }
 extern "C" uint32_t __stdcall FbrHandler6(const uint8_t* ctx) { return HandleGroupDone(ctx); }
+extern "C" uint32_t __stdcall FbrHandler7(const uint8_t* ctx) { return HandleGroupFire(ctx); }
 
 HOOK_DETOUR(FbrDetour0, FbrHandler0, g_fbrTrampolines, 0)
 HOOK_DETOUR(FbrDetour1, FbrHandler1, g_fbrTrampolines, 1)
@@ -987,9 +1064,10 @@ HOOK_DETOUR(FbrDetour3, FbrHandler3, g_fbrTrampolines, 3)
 HOOK_DETOUR_RET(FbrDetour4, FbrHandler4, g_fbrTrampolines, 4, 0)   // FUN_1017b980: __thiscall, no stack args
 HOOK_DETOUR_RET(FbrDetour5, FbrHandler5, g_fbrTrampolines, 5, 8)   // FUN_10188290: __thiscall, 2 stack args
 HOOK_DETOUR_RET(FbrDetour6, FbrHandler6, g_fbrTrampolines, 6, 0)   // FUN_1017b9d0: __thiscall, no stack args
+HOOK_DETOUR_RET(FbrDetour7, FbrHandler7, g_fbrTrampolines, 7, 8)   // FUN_101883f0: __thiscall, 2 stack args
 
 static const HookDetour g_detours[HOOK_COUNT] = { FbrDetour0, FbrDetour1, FbrDetour2, FbrDetour3, FbrDetour4,
-                                                  FbrDetour5, FbrDetour6 };
+                                                  FbrDetour5, FbrDetour6, FbrDetour7 };
 
 // Harness only (fixes/fire-by-rank-fix/tests): probe and fix counters.
 extern "C" __declspec(dllexport) void __stdcall FbrFixTestCounters(long* out) {
@@ -1016,6 +1094,9 @@ extern "C" __declspec(dllexport) void __stdcall FbrFixTestCounters(long* out) {
     out[20] = g_fCut;
     out[21] = g_fNotFired;
     out[22] = g_fExitSkipped;
+    out[23] = g_fQuorum;
+    out[24] = g_fQuorumWait;
+    out[25] = g_fSatOut;
 }
 
 // ---------------------------------------------------------------------------
@@ -1051,8 +1132,16 @@ void FbrFix_Install() {
         long g = atol(v);
         if (g >= 0 && g <= 600) g_grace = (uint32_t)g;
     }
-    g_allRanks = EnvIs1("FBRFIX_ALL_RANKS");
     char e[8] = "";
+    g_allRanks = !(GetEnvironmentVariableA("FBRFIX_ALL_RANKS", e, sizeof(e)) > 0 && e[0] == '0');
+    if (GetEnvironmentVariableA("FBRFIX_QUORUM", v, sizeof(v)) > 0) {
+        long q = atol(v);
+        if (q >= 0 && q <= 100) g_quorum = (uint32_t)q;
+    }
+    if (GetEnvironmentVariableA("FBRFIX_QUORUM_WAIT", v, sizeof(v)) > 0) {
+        long q = atol(v);
+        if (q >= 0 && q <= 600) g_quorumWait = (uint32_t)q;
+    }
     g_earlyReload = !(GetEnvironmentVariableA("FBRFIX_EARLY_RELOAD", e, sizeof(e)) > 0 && e[0] == '0');
     if (GetEnvironmentVariableA("FBRFIX_FIRE_GRACE", v, sizeof(v)) > 0) {
         long g = atol(v);
@@ -1082,9 +1171,14 @@ void FbrFix_Install() {
         if (g_slots[h].active)
             Log("fbrfix: hook %s (%s) installed at RVA 0x%06X", g_hookDefs[h].func, g_hookDefs[h].role, g_hookDefs[h].rva);
     Log("fbrfix: fix %s, grace %u ticks (%.1f game s), %s", off ? "OFF (FBRFIX_OFF=1), hooks installed" : "ON", g_grace,
-        g_grace / 10.0, g_allRanks ? "every rank fires (FBRFIX_ALL_RANKS=1)" : "3 groups as in the game");
+        g_grace / 10.0, g_allRanks ? "every rank fires" : "3 groups as in the game (FBRFIX_ALL_RANKS=0)");
     Log("fbrfix: early reload %s; fire grace %u ticks%s", g_earlyReload ? "ON" : "OFF (FBRFIX_EARLY_RELOAD=0)",
         g_fireGrace, g_fireGrace ? " after the group's last shot" : " (off)");
+    if (g_quorum)
+        Log("fbrfix: quorum: a group fires %u ticks after %u%% of its shooters are loaded and ready; men still "
+            "reloading sit the volley out", g_quorumWait, g_quorum);
+    else
+        Log("fbrfix: quorum off (FBRFIX_QUORUM=0): one man reloading holds his group, as in the game");
     g_keyWatched = Keys_Watch('Y', &g_testKeys, 1, ToggleKey);
     Log("fbrfix: Y toggles the fix on / off%s", g_keyWatched ? "" : " (ERROR: key poll not started)");
 }
@@ -1100,6 +1194,9 @@ void FbrFix_Remove() {
         Log("fbrfix: fire-completed tests: done %ld, firing %ld, cut by the fire grace %ld (%ld men not fired); "
             "early reload orders %ld, second reload orders skipped %ld", g_fDone, g_fFiring, g_fCut, g_fNotFired,
             g_fEarly, g_fExitSkipped);
+    if (g_base)
+        Log("fbrfix: quorum: fired %ld, waited %ld ticks; fire orders not given to men reloading %ld", g_fQuorum,
+            g_fQuorumWait, g_fSatOut);
     if (g_probe) {
         EnterCriticalSection(&g_cs);
         FILE* fs[] = { g_fStates, g_fRows, g_fReload, g_fOrders, g_fUnits, g_fInfo, g_fRaw, g_fFix };

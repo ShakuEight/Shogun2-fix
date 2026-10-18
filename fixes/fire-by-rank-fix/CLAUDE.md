@@ -76,9 +76,28 @@ Pitfalls met:
   just fired: the long end-of-battle waits in these runs, the game's own behaviour.
 - The probe's per-slot arrays shift with casualties (see above).
 
+## Session 1, part 3, 2026-10-18 (every rank, quorum)
+
+User decisions: every rank fires (no cap of 3); a group fires 1 s after 75 % of its men are
+ready, instead of waiting for the last reloader.
+
+- `FBRFIX_ALL_RANKS` now defaults on (`=0` keeps 3 groups).
+- Quorum in `HandleGroupReady`: shooters loaded and ready (loaded counts as ready after the
+  grace) >= `FBRFIX_QUORUM` % (75) with men still reloading -> per-wait timer (`WaitRec.qfirst`),
+  fire after `FBRFIX_QUORUM_WAIT` ticks (10). Fourth hook `FUN_101883f0` (fire order per man,
+  task slot +0x80, only ref the vtable; 8 stolen bytes `83 EC 50 56 8B 74 24 58`,
+  docs/re/prologues_fbrfix_fire.txt): no fire order for a man with reload time > 0, marked
+  sat out (`EarlyRec.satTask/satTick`); the fire-completed hook and the exit's order skip him.
+- Runs 152601 / 152843 / 153113 (hattori / ikkoikki / generic, defaults, probe): Hattori one
+  quorum volley (3 of 39 reloading after a task restart; hang 17.8 s -> none, volleys 4 -> 5);
+  Ikko Ikki and generic identical to E+R (no straggler case: whole groups reload together).
+- Harness: fix 35, off 26, selfcheck 5, cap3 5 (replaces allranks), firegrace 5, probe 28.
+- Game folder: the user had swapped in the part-2 build (`dinput8.dll.fbrfix2`) and removed the
+  `.bak` before part 3; for the runs it was set aside as `.fbrfix2` again.
+
 Next (not started, waiting for the user):
-- Default of `FBRFIX_ALL_RANKS` (E+R +30 % in Hattori); fire the next loaded group instead of
-  waiting for one reloader / after a task restart.
+- Fire the next loaded group instead of group 0 after a task restart; Ikko Ikki rear ranks
+  without a line of fire; public release source.
 - Decide the 3-group cap option and the grace time; then a public release source and the
   combined package (fixes/README.md).
 - Matchlock samurai / warrior monks, longer battles (the replays end 30..50 s after contact).
