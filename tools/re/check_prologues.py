@@ -36,10 +36,11 @@ HOOKS = [
     ("FUN_1047fd90", 0x47FD90, "53 56 8B F1 80 7E 7C 00"),
     ("FUN_103a6850", 0x3A6850, "83 EC 0C 56 8B F1"),
     ("FUN_1045a8a0", 0x45A8A0, "F3 0F 10 44 24 10"),
-    # fire-by-rank-fix (docs/re/prologues_fbrfix*.txt): the two fix hooks, the ready test it calls,
+    # fire-by-rank-fix (docs/re/prologues_fbrfix*.txt): the three fix hooks, the ready test it calls,
     # then the four probe-only hooks
     ("FUN_1017b980", 0x17B980, "53 56 57 8B F9"),
     ("FUN_10188290", 0x188290, "83 EC 50 8B C1"),
+    ("FUN_1017b9d0", 0x17B9D0, "53 56 57 8B F1"),
     ("FUN_103cbe40", 0x3CBE40, "80 B9 84 03 00 00 01"),
     ("FUN_11374cf0", 0x1374CF0, "56 8B F1 57 56"),
     ("FUN_11374cf0+0x1B", 0x1374D0B, "89 7E 04 8B CF"),

@@ -55,8 +55,9 @@ change none of these rows. The user's theory pointed at the right column.
 
 ## 5. The fix
 
-Two entry hooks on functions that only the group fire task uses: `FUN_1017b980` has one caller,
-and `FUN_10188290` is a slot of the task's vtable.
+Three entry hooks on functions that only the group fire task uses: `FUN_1017b980` and
+`FUN_1017b9d0` have one caller each (the two wait states), and `FUN_10188290` is a slot of the
+task's vtable.
 
 1. **`FUN_10188290`** gives one man his ready / reload order. For a man whose + 0x48C differs
    from his unit's most common value, it returns at once, with the function's own `RET 8`. So the
@@ -77,6 +78,19 @@ Why a grace time and not "loaded only": the fire order that follows cancels a pe
 and makes the man aim and fire anyway. Most men are ready within 1 to 2 s, so the grace time only
 cuts off the long tail. The measured fire-completed waits (5 to 7 s) are the aim and shot
 themselves and stay untouched.
+
+3. **`FUN_1017b9d0`** (part 2, early reload) answers "has every man of the current group
+   finished his fire order". The question came from the user: does rank 1 reload while the
+   others fire? The probe's dumps showed that a man's reload time is set at his shot but frozen
+   until the fire-completed exit (`FUN_101be8f0`) gives the group its reload orders, and that
+   this wait holds for the men who get no shot. The hook gives each shooter who has fired
+   (reload time above 0; the wait before the volley required everyone loaded) and whose own
+   fire order is done his reload order at once, through the game's `FUN_10188290` with the
+   exit's after-fire flag, so the kneel decision stays the game's. It then counts him as done,
+   although his new order is open. A per-soldier table keyed by the turn (task, group, first
+   tick of the wait) makes it one order per shot; `FUN_10188290`'s hook skips the exit's second
+   order to a man who had his early one this turn and is still reloading. Option
+   `FBRFIX_FIRE_GRACE` (off) also ends the turn a set time after the group's last shot.
 
 Option `FBRFIX_ALL_RANKS=1` raises the group count before the first volley to the number of
 ranks present (at most 8). It is off by default, because it changes the game's design (see
@@ -100,9 +114,18 @@ the shared key poll thread.
 The first wait fell from 9.1 to 10.6 s to 1.6 s. The Hattori units no longer hang (20 s of hang
 off, none on) and fire 6 volleys instead of 3. Offline harness: 20 + 17 + 5 + 4 + 26 checks.
 
+Part 2 (early reload), same replays, fix on throughout: the 90th percentile of the time from a
+shot to the reload starting fell from 7 to 9 s to 2.5 s (fire at will 2.2 s), and in the Hattori
+replay a man's median time from shot to shot from 29 to 32 s to 23 to 24 s (fire at will 25 to
+26 s). Shot totals are within the replay drift; with every rank firing as well, the Hattori units
+fired about 30 % more. The table is in README.md. Harness: 28 + 22 + 5 + 4 + 5 + 27 checks.
+
 ## 7. Open
 
 - No public release source yet (`release/`), so no release equivalence run.
+- The game's own remaining waits: one man still reloading holds his group, and a restarted task
+  (the unit re-forms) always begins with group 0, even when group 0 has just fired. A fix would
+  let the next loaded group fire instead.
 - Not decided: whether every rank should fire (`FBRFIX_ALL_RANKS`), and the grace time.
 - Measured on matchlock ashigaru only. The other gun units with fire by rank (matchlock samurai,
   including the Hattori samurai with the same sword officer, and warrior monks) were not run.

@@ -5,15 +5,19 @@
 // state machine contexts and named states, a fire-by-rank task, a unit with soldiers, orders.
 // The battle clock is faked through the same pointer path the proxy reads.
 //
-//   fbrfix_test <game dll> <proxy> <tag> fix|off|selfcheck|probe
+//   fbrfix_test <game dll> <proxy> <tag> fix|off|selfcheck|allranks|firegrace|probe
 //
 //   fix        the fix on (the default): the game's own group test FUN_1017b980 is entered on a
 //              fake group task; the officer outside the shooter class is not waited for, a
 //              reloading man is, a man slow to his ready pose only until the grace time; the
-//              group order FUN_10188290 skips the officer; Y switches the fix off and on
+//              group order FUN_10188290 skips the officer; Y switches the fix off and on; the
+//              fire-completed test FUN_1017b9d0 gives a man who fired his reload order at once
+//              and the exit's second order to him is skipped (early reload)
 //   off        FBRFIX_OFF=1: the same scenes give the game's own answers until Y
 //   selfcheck  20 group tasks with a broken layout switch the fix off for good (Y refused)
 //   allranks   FBRFIX_ALL_RANKS=1: a unit 5 ranks deep gets 5 groups before its first volley
+//   firegrace  FBRFIX_EARLY_RELOAD=0 FBRFIX_FIRE_GRACE=20: no early reload orders; the
+//              fire-completed test FUN_1017b9d0 ends the turn 20 ticks after the group's last shot
 //   probe      FBRFIX_PROBE=1: the probe logs transitions of shooting machines only, samples
 //              reloads per tick, logs orders of watched units, writes its CSV files
 //
@@ -39,9 +43,9 @@ static TestCounters g_counters = nullptr;
                                else { g_fail++; printf("FAIL %s\n", name); } } while (0)
 
 struct Site { uint32_t rva; uint8_t orig[5]; uint8_t stub[6]; int stubLen; };
-// The four probe sites, then the two fix sites. FUN_1017b980 runs whole (no stub): it only reads
-// the fake objects, so with the fix off the game's own answer is checked.
-static const int SITES = 6, PROBE_SITES = 4;
+// The four probe sites, then the three fix sites. FUN_1017b980 and FUN_1017b9d0 run whole (no
+// stub): they only read the fake objects, so with the fix off the game's own answer is checked.
+static const int SITES = 7, PROBE_SITES = 4;
 static const Site kSites[SITES] = {
     { 0x1374CF0, { 0x56, 0x8B, 0xF1, 0x57, 0x56 }, { 0x5E, 0x5F, 0x5E, 0xC3 }, 4 },        // pop esi; pop edi; pop esi; ret
     { 0x1374D0B, { 0x89, 0x7E, 0x04, 0x8B, 0xCF }, { 0xC3 }, 1 },                           // ret (entered by CALL)
@@ -49,6 +53,7 @@ static const Site kSites[SITES] = {
     { 0x3DB740,  { 0x53, 0x56, 0x57, 0x8B, 0xF9 }, { 0x5F, 0x5E, 0x5B, 0xC2, 0x04, 0x00 }, 6 },
     { 0x17B980,  { 0x53, 0x56, 0x57, 0x8B, 0xF9 }, { 0 }, 0 },                              // runs whole
     { 0x188290,  { 0x83, 0xEC, 0x50, 0x8B, 0xC1 }, { 0x83, 0xC4, 0x50, 0xC2, 0x08, 0x00 }, 6 },  // add esp,0x50; ret 8
+    { 0x17B9D0,  { 0x53, 0x56, 0x57, 0x8B, 0xF1 }, { 0 }, 0 },                              // runs whole
 };
 
 static void Patch(uint8_t* at, const void* bytes, size_t n) {
@@ -152,7 +157,8 @@ static void Transition(uint8_t* ctx, uint8_t* oldState, uint8_t* next) {
 
 static long C(int i) { long c[32] = {}; g_counters(c); return c[i]; }
 enum { C_PROBE = 0, C_FIXON = 7, C_READY = 8, C_GRACE = 9, C_RELOADING = 10, C_WAITING = 11, C_EXCLUDED = 12,
-       C_SKIPPED = 13, C_GIVEN = 14, C_BADTASK = 15, C_ALLRANKS = 16 };
+       C_SKIPPED = 13, C_GIVEN = 14, C_BADTASK = 15, C_ALLRANKS = 16, C_EARLY = 17, C_DONE = 18, C_FIRING = 19,
+       C_CUT = 20, C_NOTFIRED = 21, C_EXITSKIP = 22 };
 
 static int Lines(const char* dir, const char* name) {
     char path[MAX_PATH];
@@ -306,7 +312,7 @@ static void RunFix(bool on) {
     }
     bool probeUntouched = true;
     for (int i = 0; i < PROBE_SITES; i++) probeUntouched &= memcmp(g_base + kSites[i].rva, kSites[i].orig, 5) == 0;
-    CHECK(probeUntouched, "X3 probe sites untouched without FBRFIX_PROBE");
+    CHECK(probeUntouched, "X9 probe sites untouched without FBRFIX_PROBE");
 
     Group g = MakeGroup();
     uint32_t tick = 200;
@@ -365,6 +371,79 @@ static void RunFix(bool on) {
     CHECK(C(C_FIXON) == (on ? 1 : 0), "K3 Y again switches it back");
 }
 
+// --- early reload: the fire-completed test FUN_1017b9d0 on group 0 (officer + gun men 1..3) ----
+static uint32_t Done(Group& g) {
+    GroupTest f = (GroupTest)(void*)(g_base + 0x17B9D0);
+    return f(g.task) & 0xFF;
+}
+
+static void EarlyScene(bool on) {
+    Group g = MakeGroup();
+    g.task[0x44] = 1;                                   // the group was ordered to fire
+    for (int i = 0; i < 12; i++) { SetReady(g.u.s[i], true); SetReload(g.u.s[i], 0.0f); }
+    SetReady(g.u.s[0], false);                          // the sword officer, stuck as ever
+    // 1: men 1 and 2 fired (reload time set, fire order done), man 3 still aiming
+    SetReload(g.u.s[1], 19.8f);
+    SetReload(g.u.s[2], 19.8f);
+    SetReady(g.u.s[3], false);
+    SetTick(500);
+    uint32_t r = Done(g);
+    if (on) CHECK(r == 0 && C(C_EARLY) == 2, "E1 the two men who fired get their reload order at once, the turn goes on");
+    else    CHECK(r == 0 && C(C_EARLY) == 0, "E1 fix off: no early reload order (vanilla)");
+    SetReady(g.u.s[1], false);                          // their new reload orders are open
+    SetReady(g.u.s[2], false);
+    SetTick(501);
+    r = Done(g);
+    CHECK(r == 0, "E2 the turn waits for the man still aiming");
+    if (on) CHECK(C(C_EARLY) == 2, "E2b ... and gives no second early order");
+    // 2: man 3 finishes without a shot: the turn is over although two reload orders are open
+    SetReady(g.u.s[3], true);
+    SetTick(502);
+    r = Done(g);
+    if (on) CHECK(r == 1 && C(C_DONE) == 1, "E3 done once every shooter fired or finished (officer left out)");
+    else    CHECK(r == 0, "E3 fix off: the game waits for every open order (vanilla)");
+    // 3: the exit's reload order for the whole group: not again for a man already reloading
+    GroupOrder order = (GroupOrder)(void*)(g_base + 0x188290);
+    long given = C(C_GIVEN);
+    order(g.task, nullptr, g.u.s[1], 1);
+    order(g.task, nullptr, g.u.s[3], 1);
+    if (on) CHECK(C(C_EXITSKIP) == 1 && C(C_GIVEN) == given + 1, "E4 the exit's order skips a man already reloading, not one loaded");
+    else    CHECK(C(C_EXITSKIP) == 0, "E4 fix off: the exit's orders are the game's own");
+    if (!on) return;
+    // 4: a man who fired but is still in his fire order gets his reload order when it is done
+    Put32(g.task, 0x40, 1);                             // group 1: soldiers 4..7
+    SetReload(g.u.s[4], 19.8f);
+    SetReady(g.u.s[4], false);
+    SetTick(600);
+    long early = C(C_EARLY);
+    r = Done(g);
+    CHECK(r == 0 && C(C_EARLY) == early, "E5 no early order while the man's fire order runs");
+    SetReady(g.u.s[4], true);
+    SetTick(601);
+    r = Done(g);
+    CHECK(r == 1 && C(C_EARLY) == early + 1, "E6 ... and one once it is done");
+}
+
+// FBRFIX_FIRE_GRACE=20 with FBRFIX_EARLY_RELOAD=0: the turn ends 2 s after the group's last shot.
+static void FireGraceScene() {
+    Group g = MakeGroup();
+    g.task[0x44] = 1;
+    for (int i = 0; i < 12; i++) { SetReady(g.u.s[i], true); SetReload(g.u.s[i], 0.0f); }
+    SetReady(g.u.s[2], false);                          // men 2 and 3 aiming
+    SetReady(g.u.s[3], false);
+    SetReload(g.u.s[1], 19.8f);                         // man 1 fired
+    SetTick(700);
+    uint32_t r = Done(g);
+    CHECK(r == 0 && C(C_EARLY) == 0, "F1 early reload off: no order, the turn waits for the men aiming");
+    SetReload(g.u.s[2], 19.8f);                         // man 2 fires at 701
+    SetReady(g.u.s[2], true);
+    for (uint32_t t = 701; t <= 720; t++) { SetTick(t); r = Done(g); }
+    CHECK(r == 0 && C(C_CUT) == 0, "F2 a new shot starts the fire grace again (19 ticks after it)");
+    SetTick(721);
+    r = Done(g);
+    CHECK(r == 1 && C(C_CUT) == 1 && C(C_NOTFIRED) == 1, "F3 20 ticks after the last shot the turn ends, man 3 keeps his load");
+}
+
 // A 15-man unit five ranks deep (groups 0..4 by index) under a task capped at 3 groups.
 static void DeepScene(bool expectRaised) {
     Group g = MakeGroup();
@@ -406,15 +485,18 @@ static void RunSelfcheck() {
 int main(int argc, char** argv) {
     setvbuf(stdout, nullptr, _IONBF, 0);
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
-    if (argc < 5) { printf("usage: fbrfix_test <game dll> <proxy> <tag> fix|off|selfcheck|probe\n"); return 2; }
+    if (argc < 5) { printf("usage: fbrfix_test <game dll> <proxy> <tag> fix|off|selfcheck|allranks|firegrace|probe\n"); return 2; }
     const char* mode = argv[4];
     bool probe = strcmp(mode, "probe") == 0;
     bool off = strcmp(mode, "off") == 0;
     bool selfcheck = strcmp(mode, "selfcheck") == 0;
     bool allRanks = strcmp(mode, "allranks") == 0;
+    bool fireGrace = strcmp(mode, "firegrace") == 0;
     SetEnvironmentVariableA("FBRFIX_PROBE", probe ? "1" : nullptr);
     SetEnvironmentVariableA("FBRFIX_OFF", off ? "1" : nullptr);
     SetEnvironmentVariableA("FBRFIX_ALL_RANKS", allRanks ? "1" : nullptr);
+    SetEnvironmentVariableA("FBRFIX_EARLY_RELOAD", fireGrace ? "0" : nullptr);
+    SetEnvironmentVariableA("FBRFIX_FIRE_GRACE", fireGrace ? "20" : nullptr);
     SetEnvironmentVariableA("FBRFIX_GRACE", nullptr);
     SetEnvironmentVariableA("ARTFIX_PROBE", nullptr);
     SetEnvironmentVariableA("PATHFIX_CAPTURE", nullptr);
@@ -450,7 +532,8 @@ int main(int argc, char** argv) {
         CHECK(C(C_PROBE) == 0, "N1 probe off without FBRFIX_PROBE");
         if (selfcheck) RunSelfcheck();
         else if (allRanks) DeepScene(true);
-        else { RunFix(!off); if (!off) DeepScene(false); }
+        else if (fireGrace) FireGraceScene();
+        else { RunFix(!off); EarlyScene(!off); if (!off) DeepScene(false); }
         FreeLibrary(proxy);
     }
     bool restored = true;

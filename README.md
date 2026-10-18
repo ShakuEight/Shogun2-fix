@@ -8,7 +8,7 @@ own folder. Install by copying it in, uninstall by deleting it.
 |---|---|---|
 | [**pathfix**](fixes/pathfix/README.md) | Units ordered through gates, doorways and round corners stop in a stretched block and file through one man at a time | Public release 1.0 |
 | [**artillery-targeting-fix**](fixes/artillery-targeting-fix/README.md) | Artillery ordered to fire at a unit aims at the end of the enemy line instead of its middle | Dev build |
-| [**fire-by-rank-fix**](fixes/fire-by-rank-fix/README.md) | Matchlock units with Fire by Rank wait about 10 s before their first volley; the Hattori and Ikko Ikki gun units stop firing and reloading after three volleys | Dev build |
+| [**fire-by-rank-fix**](fixes/fire-by-rank-fix/README.md) | Matchlock units with Fire by Rank wait about 10 s before their first volley; the Hattori and Ikko Ikki gun units stop firing and reloading after three volleys; a man who has fired waits for his whole rank before he reloads | Dev build |
 
 ## For players
 

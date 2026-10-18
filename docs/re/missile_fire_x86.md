@@ -60,8 +60,11 @@ States (getters at vtable + 0x58 .. + 0x70): START, REFORM, then the cycle:
 2. **ORDER_GROUP_FIRE**: fire orders for the current group (each carries the target record,
    `docs/re/artillery_aim_x86.md`).
 3. **WAIT_FOR_GROUP_FIRE_COMPLETED**: ends when every man of the group passes the ready test
-   again (his fire order is done). Its exit gives the group's men reload orders (kneeling),
-   except for the last group.
+   again (his fire order is done; the test is `FUN_1017b9d0`, its only caller, which asks task
+   slot + 0x7c, a thin wrapper around `FUN_103cbe40`). Its exit (`FUN_101be8f0`) gives the
+   group's men their reload orders (slot + 0x84 with the after-fire flag: kneeling), except for
+   the last group, whose men get theirs from the next wait's entry (`FUN_1019a9a0`, flag 0, every
+   man of the current and later groups).
 4. **ADVANCE_GROUP**: the group number goes up; past the last group it wraps to 0 (or the task
    finishes and the missile machine re-forms the unit and starts a new one).
 
@@ -79,6 +82,19 @@ Measured (three replays, two fire-by-rank units each):
   s after the enemy is in range, against 2 to 6 s with fire at will.
 - A fire-completed wait lasts 5 to 7 s (aim, shot, recovery); the next group's wait is then
   short while the reloads overlap.
+- **The reload time is set at the shot but does not run until the reload order.** A soldier's
+  + 0x390 jumps to the full reload time when he fires (19.8 s for the Hattori matchlock
+  ashigaru, 20.9 s for the Ikko Ikki ones) and stays there until his group's fire-completed exit
+  gives him his reload order; then it counts down one per game second (a second type-5 order to
+  a man already reloading, as the wait entry gives after a wrap, does not reset it). The
+  fire-completed wait waits for the slowest man of the group, including men who never get a
+  shot (their fire order ends after several seconds without one). Measured empty-gun idle after
+  the first volley: 2.4 s (generic), 7.8 s (Ikko Ikki), 9.0 s (Hattori: 24 of 40 men fired at
+  once, the wait ended 9 s later, 16 men had no shot).
+- With 3 groups of about 6 s each, group 0 gets about 12 s of reload before the rotation comes
+  back; it still had 7.0 to 14.7 s left at the wrap in the three replays. In the Hattori replay
+  a fire-by-rank man fired every 29 to 32 s (median), a fire-at-will man every 26 s. With 4 groups (Hattori, 4 ranks) the wrap
+  found 0.8 to 1.1 s left.
 - With the cap at 3, the rear ranks of a formation deeper than 3 ranks never fire: 40 of 160
   men in a 4-rank Hattori unit, 65 of 200 in a 5-rank Ikko Ikki unit. The code handles more
   groups (kneel flag, wrap at the count); only the constructor caps it.

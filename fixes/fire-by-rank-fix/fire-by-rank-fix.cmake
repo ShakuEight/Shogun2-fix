@@ -1,5 +1,5 @@
 # fire-by-rank-fix (fbrfix): included by the root CMakeLists.txt when FIX_FIRE_BY_RANK is ON.
-# Dev build: src/fbrfix.cpp (research probe with FBRFIX_PROBE=1; the fix itself is not written yet)
+# Dev build: src/fbrfix.cpp (the fix, and the research probe with FBRFIX_PROBE=1)
 # + the harness. No public release source yet.
 set(FBRFIX_DIR ${CMAKE_CURRENT_LIST_DIR})
 
