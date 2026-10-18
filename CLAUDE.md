@@ -8,7 +8,7 @@ Runtime fixes for Total War: Shogun 2 (the original 32-bit `Empire.Retail.dll`),
 |---|---|---|
 | pathfix: formation through gates, doorways, corners | `fixes/pathfix/` | public release 1.0, dev build v42 |
 | artillery-targeting-fix (code name artfix, was aimfix): artillery aims at the middle of the target unit | `fixes/artillery-targeting-fix/` | dev build (2026-10-18), no release |
-| fire-by-rank-fix (code name fbrfix): matchlock target acquisition, fire by rank, Hattori / Ikko Ikki reload | `fixes/fire-by-rank-fix/` | dev build (2026-10-18, part 3: early reload, every rank, 75 % quorum), no release |
+| fire-by-rank-fix (code name fbrfix): matchlock target acquisition, fire by rank, Hattori / Ikko Ikki reload | `fixes/fire-by-rank-fix/` | dev build (2026-10-18: every rank, front rank first, 75 % quorum, early reload), no release |
 
 Shared code for all fixes lives in `proxy/` since 2026-10-18: hook engine `hook.h`, guarded
 memory and battle tick `gamemem.h`, keys and tones `keys.h` (dev only). API in `fixes/README.md`.

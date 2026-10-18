@@ -2,40 +2,44 @@
 // Folder fixes/fire-by-rank-fix/, code name fbrfix.
 //
 // Dev build. Shogun 2's fire by rank is the group fire task (vtable 0x115C1048): the men are put
-// in up to 3 groups; the task waits until every man of the current group is "loaded and ready",
-// orders the group to fire, waits until every man has fired, gives the group reload orders, and
-// moves to the next group. Two faults, both fixed here:
+// in groups by formation rank (at most 3); the task waits until every man of the current group
+// is "loaded and ready", orders the group to fire, waits until every man has finished his fire
+// order, gives the group its (kneeling) reload orders, and moves to the next group. Faults:
 //
-//   1. Hattori / Ikko Ikki: their gun units carry a sword officer (officer_katana: katana
-//      animations, no gun). After the first volley his group's reload order (kneeling) never
-//      completes for him, so the wait for his group never ends and the whole unit stops firing
-//      and reloading for good.
-//   2. Every unit: the wait before the first volley lasts about 10 s, because it waits for the
-//      last man to finish his ready pose; also later waits hang on single stragglers.
+//   - Hattori / Ikko Ikki gun units carry a sword officer (officer_katana: katana animations, no
+//     gun). His kneeling reload order never completes, so after the first rotation the wait for
+//     his group never ends: the unit stops firing and reloading for good.
+//   - The wait before the first volley lasts about 10 s: it waits for the slowest ready pose.
+//   - A man's reload time is set at his shot but only runs once he has his reload order, which
+//     comes when his whole group is done, including men who never get a shot (2 to 9 s idle).
+//   - Ranks beyond the third never fire; one man still reloading holds his whole group; the turn
+//     goes strictly in order, so a loaded group waits while the group whose turn it is reloads.
 //
-// The fix (four entry hooks, on from launch; FBRFIX_OFF=1 starts it off, Y toggles it):
-//   - FUN_10188290 (the group task's order to get ready / reload): skipped for a man who is not
-//     of his unit's shooter class (soldier +0x48C differs from the unit's most common value;
-//     the sword officer is the only such man seen), so he never gets an order he cannot finish.
-//   - FUN_1017b980 (the "group loaded and ready" test): the group may fire when every shooter of
-//     it is loaded and either ready or the wait has lasted FBRFIX_GRACE game ticks (default 15
-//     = 1.5 s); men outside the shooter class are not waited for.
-//   - FUN_1017b9d0 (the "group fire completed" test; part 2, early reload): a man's reload time is
-//     set at his shot but only counts down once he has a reload order, and the game gives the
-//     group's reload orders when every man of the group has finished his fire order, so the men
-//     who fired wait (2 to 9 s measured) for the men who cannot get a shot. The hook gives each
-//     shooter his kneeling reload order (the game's own FUN_10188290) as soon as he has fired and
-//     his fire order is done, and answers the test for those men (FBRFIX_EARLY_RELOAD=0 turns
-//     it off). FBRFIX_FIRE_GRACE=<ticks> (default 0 = off) also ends the turn that many ticks
-//     after the group's last shot; the men who did not fire keep their load.
-//   - Every rank fires (part 3, FBRFIX_ALL_RANKS=0 turns it off): the game caps the task at 3
-//     groups, so in a formation deeper than 3 ranks the rear ranks never fire; the group count
-//     is raised to the ranks present before the first volley.
-//   - Quorum (part 3): one man still reloading held his whole group. Once FBRFIX_QUORUM percent
-//     (default 75) of the group's shooters are loaded and ready, the group fires after
-//     FBRFIX_QUORUM_WAIT more ticks (default 10 = 1 s); FUN_101883f0 (the task's fire order
-//     for one man) gives no fire order to a man still reloading, so he sits the volley out
-//     and does not hold the fire-completed test either.
+// The fix: four entry hooks, all on from launch (FBRFIX_OFF=1 starts the fix off, Y toggles it).
+//   FUN_10188290 (ready / reload order for one man): none for a man outside his unit's shooter
+//     class (soldier +0x48C differs from the unit's most common value: the sword officer), and
+//     no second reload order for a man already reloading under his early one or sitting out.
+//   FUN_1017b980 (group "loaded and ready" test), answered by the fix:
+//     - every rank fires: the group count is raised to the formation's ranks (at most 64) before
+//       the first volley (FBRFIX_ALL_RANKS=0: the game's 3);
+//     - front rank first: the front-most group with FBRFIX_QUORUM percent (75) of its shooters
+//       loaded takes the turn, whichever group's turn it was, and gets the ready order the wait's
+//       entry gave the others; a group whose last turn had shots from fewer than a quarter of
+//       its men (no line of fire) only fires on its own turn (FBRFIX_FRONT_FIRST=0: the game's
+//       order);
+//     - that group fires when all its shooters are loaded and ready, or loaded and the wait has
+//       lasted FBRFIX_GRACE ticks (15 = 1.5 s), or FBRFIX_QUORUM_WAIT ticks (10 = 1 s) after 75 %
+//       of them are loaded and ready (FBRFIX_QUORUM=0: wait for every man);
+//     - men outside the shooter class are not waited for.
+//   FUN_101883f0 (fire order for one man): none for a man still reloading; he sits the volley out.
+//   FUN_1017b9d0 (group "fire completed" test), answered by the fix: a shooter who has fired and
+//     finished his fire order gets the game's own kneeling reload order at once (early reload,
+//     FBRFIX_EARLY_RELOAD=0 turns it off) and counts as done; men sitting out do not count.
+//     The turn also ends FBRFIX_FIRE_GRACE ticks (50 = 5 s; 0 = off) after the group's last shot,
+//     so a man who aims but never gets a shot does not hold the unit.
+// The group table (task +0x48) is filled by the game from the formation on the task's first tick
+// and on every re-form (FUN_101540f0), so a new formation gets new ranks; each man keeps his own
+// reload time.
 //
 // The probe (FBRFIX_PROBE=1, research) hooks the game's generic state-machine runner and the two
 // soldier order functions and writes <game>\fbrfix_runs\<stamp>\:
@@ -666,14 +670,16 @@ static volatile LONG g_fOrderGiven = 0;
 static volatile LONG g_fBadTask = 0;      // group task fields implausible (self-check)
 static FILE* g_fFix = nullptr;            // probe only: fbr_fix.csv
 static bool g_allRanks = true;            // every rank fires in turn; FBRFIX_ALL_RANKS=0: 3 groups as in the game
-static const uint32_t MAX_GROUPS = 8;
+static const uint32_t MAX_GROUPS = 64;    // ranks beyond this never fire
 static volatile LONG g_fAllRanks = 0;     // group tasks whose count was raised
+static bool g_frontFirst = true;          // the front-most loaded group fires next; FBRFIX_FRONT_FIRST=0: strict order
+static volatile LONG g_fSwitched = 0;     // group tests that moved the turn to a front-most loaded group
 // Early reload (FUN_1017b9d0 hook)
 static const uint32_t RVA_GROUP_ORDER = 0x188290;   // FUN_10188290, the task's slot +0x84
 static const uint32_t GRP_VT_SLOT_ORDER = 0x84;
 typedef void (__fastcall *GroupOrderFn)(uint32_t task, uint32_t edx, uint32_t soldier, uint32_t afterFire);
 static bool g_earlyReload = true;         // FBRFIX_EARLY_RELOAD=0 turns it off
-static uint32_t g_fireGrace = 0;          // FBRFIX_FIRE_GRACE=<ticks>: end the turn this long after the last shot (0 = off)
+static uint32_t g_fireGrace = 50;         // FBRFIX_FIRE_GRACE=<ticks>: end the turn this long after the last shot (0 = off)
 static volatile LONG g_fEarly = 0;        // early reload orders given
 static volatile LONG g_fDone = 0;         // fire-completed test answered "done"
 static volatile LONG g_fFiring = 0;       // ... answered "not done": a shooter still in his fire order
@@ -753,6 +759,51 @@ static uint32_t QuorumTicks(uint32_t task, uint32_t tick, bool reached) {
     return q;
 }
 
+// Line of fire per group: how many of its shooters were given fire orders on its last turn and
+// how many of them fired. A group that fired with fewer than a quarter of them (rear ranks with
+// no line of fire, a target out of reach) stays loaded but may not take the turn out of order
+// until it has had its own turn with shots. sig = the task's group table (a re-form or casualties
+// change it): a new table clears the memory.
+struct LosRec { uint32_t task, sig, last; uint16_t aimed[MAX_GROUPS], fired[MAX_GROUPS]; uint8_t turned[MAX_GROUPS]; };
+static LosRec g_los[64];
+static volatile LONG g_losLock = 0;
+
+static LosRec* LosOf(uint32_t task, uint32_t tick) {   // with g_losLock held
+    LosRec* oldest = &g_los[0];
+    for (int i = 0; i < 64; i++) {
+        if (g_los[i].task == task) { g_los[i].last = tick; return &g_los[i]; }
+        if (g_los[i].last < oldest->last) oldest = &g_los[i];
+    }
+    memset(oldest, 0, sizeof(*oldest));
+    oldest->task = task;
+    oldest->last = tick;
+    return oldest;
+}
+
+// Which groups may take the turn out of order (out[g] for g < groups).
+static void LosCandidates(uint32_t task, uint32_t sig, uint32_t tick, uint32_t groups, bool* out) {
+    while (InterlockedCompareExchange(&g_losLock, 1, 0) != 0) {}
+    LosRec* r = LosOf(task, tick);
+    if (r->sig != sig) {
+        uint32_t keep = r->task;
+        memset(r, 0, sizeof(*r));
+        r->task = keep; r->sig = sig; r->last = tick;
+    }
+    for (uint32_t g = 0; g < groups; g++)
+        out[g] = !r->turned[g] || (uint32_t)r->fired[g] * 4 >= r->aimed[g];
+    InterlockedExchange(&g_losLock, 0);
+}
+
+static void LosNote(uint32_t task, uint32_t group, uint32_t aimed, uint32_t fired, uint32_t tick) {
+    if (group >= MAX_GROUPS) return;
+    while (InterlockedCompareExchange(&g_losLock, 1, 0) != 0) {}
+    LosRec* r = LosOf(task, tick);
+    r->turned[group] = 1;
+    r->aimed[group] = (uint16_t)(aimed > 0xFFFF ? 0xFFFF : aimed);
+    r->fired[group] = (uint16_t)(fired > 0xFFFF ? 0xFFFF : fired);
+    InterlockedExchange(&g_losLock, 0);
+}
+
 static void FixRow(uint32_t task, uint32_t unit, uint32_t group, uint32_t men, uint32_t excluded, uint32_t notLoaded,
                    uint32_t notReady, uint32_t waited, const char* answer) {
     if (!g_fFix || !RowBudget(1)) return;
@@ -781,7 +832,7 @@ static uint32_t HandleGroupReady(const uint8_t* ctx) {
     uint32_t unit = 0, group = 0, groups = 0, table = 0, count, arr, cls;
     if (!Rd32(task + TASK_OFF_UNIT, &unit) || !IsUnit(unit, &count, &arr) || !Rd32(task + GRP_OFF_CUR, &group) ||
         !Rd32(task + GRP_OFF_COUNT, &groups) || !Rd32(task + GRP_OFF_TABLE, &table) || !PtrPlausible(table) ||
-        groups == 0 || groups > 8 || group >= groups || !ShooterClass(unit, &cls)) {
+        groups == 0 || groups > MAX_GROUPS || group >= groups || !ShooterClass(unit, &cls)) {
         BadTask();
         return HOOK_CONTINUE;
     }
@@ -803,21 +854,57 @@ static uint32_t HandleGroupReady(const uint8_t* ctx) {
             groups = top + 1;
         }
     }
-    uint32_t tick = Tick();
-    uint32_t waited = WaitTicks(task, group, tick);
-    uint32_t men = 0, excluded = 0, notLoaded = 0, notReady = 0;
+    // One pass over the unit: per group its shooters, those still reloading, those loaded but not
+    // ready (pose), and the men outside the shooter class.
+    uint32_t gMen[MAX_GROUPS] = {}, gNotLoaded[MAX_GROUPS] = {}, gNotReady[MAX_GROUPS] = {}, gExcluded[MAX_GROUPS] = {};
+    uint32_t sig = groups;   // the group table as the game filled it
     for (uint32_t i = 0; i < count; i++) {
         uint32_t s, idx, g, c;
         float reload;
         if (!Rd32(arr + 4 * i, &s) || !Rd32(s + SOL_OFF_INDEX, &idx) || idx >= MAX_MEN || !Rd32(table + 4 * idx, &g))
             return HOOK_CONTINUE;
-        if (g != group) continue;
+        sig = sig * 31 + g + 7 * idx;
+        if (g >= groups) continue;
         if (!Rd32(s + SOL_OFF_CLASS, &c) || !MemcpyTry(&reload, s + SOL_OFF_RELOAD, 4)) return HOOK_CONTINUE;
-        if (c != cls) { excluded++; continue; }
-        men++;
-        if (reload > 0.0f) notLoaded++;
-        else if ((g_ready(s) & 0xFF) == 0) notReady++;
+        if (c != cls) { gExcluded[g]++; continue; }
+        gMen[g]++;
+        if (reload > 0.0f) gNotLoaded[g]++;
+        else if ((g_ready(s) & 0xFF) == 0) gNotReady[g]++;
     }
+    // Front rank first: the front-most group with FBRFIX_QUORUM percent of its shooters loaded (all
+    // of them with the quorum off) fires next, whichever group's turn it is, unless it fired with
+    // fewer than a quarter of its men on its last turn (then only on its own turn). None: the
+    // current group waits, as in the game.
+    if (g_frontFirst) {
+        bool mayJump[MAX_GROUPS];
+        LosCandidates(task, sig, Tick(), groups, mayJump);
+        for (uint32_t g = 0; g < groups; g++) {
+            uint32_t loaded = gMen[g] - gNotLoaded[g];
+            bool eligible = gMen[g] && (g_quorum ? loaded * 100 >= g_quorum * gMen[g] : gNotLoaded[g] == 0);
+            if (!eligible || (g != group && !mayJump[g])) continue;
+            if (g != group && IsGroupTask(task) && WriteDwordTry(task + GRP_OFF_CUR, g)) {
+                InterlockedIncrement(&g_fSwitched);
+                if (g_fFix) FixRow(task, unit, g, gMen[g], group, gNotLoaded[g], gNotReady[g], 0, "switched");
+                // The wait's entry (FUN_1019a9a0) gave its ready orders to the current and later
+                // groups only; a front group taking the turn gets the same order now, so its men
+                // stand from their kneeling reload pose before the fire order. Its wait starts
+                // with the next test.
+                GroupOrderFn order = (GroupOrderFn)(g_base + RVA_GROUP_ORDER);
+                for (uint32_t i = 0; i < count; i++) {
+                    uint32_t s, idx, gg, c;
+                    if (!Rd32(arr + 4 * i, &s) || !Rd32(s + SOL_OFF_INDEX, &idx) || idx >= MAX_MEN ||
+                        !Rd32(table + 4 * idx, &gg) || gg != g || !Rd32(s + SOL_OFF_CLASS, &c) || c != cls)
+                        continue;
+                    order(task, 0, s, 0);
+                }
+                return HOOK_RETURN(0);
+            }
+            break;
+        }
+    }
+    uint32_t tick = Tick();
+    uint32_t waited = WaitTicks(task, group, tick);
+    uint32_t men = gMen[group], excluded = gExcluded[group], notLoaded = gNotLoaded[group], notReady = gNotReady[group];
     if (men == 0) return HOOK_CONTINUE;   // nothing to decide: the game's own test
     if (excluded) InterlockedExchangeAdd(&g_fExcludedMen, (LONG)excluded);
     const char* answer;
@@ -857,7 +944,7 @@ static void TurnOf(uint32_t task, uint32_t group, uint32_t tick, uint32_t fired,
     }
     t->last = tick;
     if (fired > t->shots) { t->shots = fired; t->lastShot = tick; }
-    *key = (t->first << 4) | (group & 0xF);
+    *key = (t->first << 8) | (group & 0xFF);
     *sinceShot = t->shots ? tick - t->lastShot : 0;
     InterlockedExchange(&g_turnLock, 0);
 }
@@ -868,7 +955,7 @@ static uint32_t CurrentTurn(uint32_t task, uint32_t tick) {
     while (InterlockedCompareExchange(&g_turnLock, 1, 0) != 0) {}
     for (int i = 0; i < 64; i++)
         if (g_turns[i].task == task && tick >= g_turns[i].last && tick - g_turns[i].last <= 3) {
-            key = (g_turns[i].first << 4) | (g_turns[i].group & 0xF);
+            key = (g_turns[i].first << 8) | (g_turns[i].group & 0xFF);
             break;
         }
     InterlockedExchange(&g_turnLock, 0);
@@ -949,7 +1036,7 @@ static uint32_t HandleGroupDone(const uint8_t* ctx) {
         return HOOK_CONTINUE;
     }
     uint32_t tick = Tick();
-    uint32_t men = 0, excluded = 0, fired = 0, firing = 0, notFired = 0;
+    uint32_t men = 0, excluded = 0, fired = 0, firing = 0, notFired = 0, satOut = 0;
     uint32_t todo[MAX_MEN];
     uint32_t nTodo = 0;
     for (uint32_t i = 0; i < count; i++) {
@@ -976,14 +1063,14 @@ static uint32_t HandleGroupDone(const uint8_t* ctx) {
     for (uint32_t k = 0; k < nTodo; k++) {
         uint32_t s = todo[k];
         if (HadEarly(s, task, key)) continue;
-        if (SatOut(s, task, key >> 4)) { fired--; continue; }   // reloading, had no fire order: not his volley
+        if (SatOut(s, task, key >> 8)) { fired--; satOut++; continue; }   // reloading, had no fire order: not his volley
         if ((g_ready(s) & 0xFF) == 0) { firing++; continue; }   // fired, fire order not done yet
         if (!g_earlyReload) continue;                          // done with his fire order: as the game counts it
         order(task, 0, s, 1);                                  // the exit's own call: kneeling reload order
         EarlyRec* e = EarlyOf(s, true);
         if (e) { e->task = task; e->key = key; }
         InterlockedIncrement(&g_fEarly);
-        if (g_fFix) FixRow(task, unit, group, men, excluded, fired, firing, tick - (key >> 4), "early");
+        if (g_fFix) FixRow(task, unit, group, men, excluded, fired, firing, tick - (key >> 8), "early");
     }
     const char* answer;
     uint32_t result;
@@ -993,9 +1080,10 @@ static uint32_t HandleGroupDone(const uint8_t* ctx) {
         InterlockedIncrement(&g_fCut);
         InterlockedExchangeAdd(&g_fNotFired, (LONG)notFired);
     } else { result = 0; answer = "firing"; InterlockedIncrement(&g_fFiring); }
+    if (result) LosNote(task, group, men - satOut, fired, tick);
     if (excluded) InterlockedExchangeAdd(&g_fExcludedMen, (LONG)excluded);
-    if (g_fFix && (result || (tick - (key >> 4)) % 10 == 0))
-        FixRow(task, unit, group, men, excluded, fired, firing, tick - (key >> 4), answer);
+    if (g_fFix && (result || (tick - (key >> 8)) % 10 == 0))
+        FixRow(task, unit, group, men, excluded, fired, firing, tick - (key >> 8), answer);
     return HOOK_RETURN(result);
 }
 
@@ -1014,7 +1102,7 @@ static uint32_t HandleGroupOrder(const uint8_t* ctx) {
         float reload = 0.0f;
         uint32_t key = g_earlyReload ? CurrentTurn(task, Tick()) : 0;
         if (key && MemcpyTry(&reload, s + SOL_OFF_RELOAD, 4) && reload > 0.0f &&
-            (HadEarly(s, task, key) || SatOut(s, task, key >> 4))) {
+            (HadEarly(s, task, key) || SatOut(s, task, key >> 8))) {
             InterlockedIncrement(&g_fExitSkipped);
             return HOOK_RETURN(0);
         }
@@ -1097,6 +1185,7 @@ extern "C" __declspec(dllexport) void __stdcall FbrFixTestCounters(long* out) {
     out[23] = g_fQuorum;
     out[24] = g_fQuorumWait;
     out[25] = g_fSatOut;
+    out[26] = g_fSwitched;
 }
 
 // ---------------------------------------------------------------------------
@@ -1134,6 +1223,7 @@ void FbrFix_Install() {
     }
     char e[8] = "";
     g_allRanks = !(GetEnvironmentVariableA("FBRFIX_ALL_RANKS", e, sizeof(e)) > 0 && e[0] == '0');
+    g_frontFirst = !(GetEnvironmentVariableA("FBRFIX_FRONT_FIRST", e, sizeof(e)) > 0 && e[0] == '0');
     if (GetEnvironmentVariableA("FBRFIX_QUORUM", v, sizeof(v)) > 0) {
         long q = atol(v);
         if (q >= 0 && q <= 100) g_quorum = (uint32_t)q;
@@ -1179,6 +1269,8 @@ void FbrFix_Install() {
             "reloading sit the volley out", g_quorumWait, g_quorum);
     else
         Log("fbrfix: quorum off (FBRFIX_QUORUM=0): one man reloading holds his group, as in the game");
+    Log("fbrfix: %s", g_frontFirst ? "front rank first: the front-most loaded group fires next"
+                                   : "groups fire in the game's order (FBRFIX_FRONT_FIRST=0)");
     g_keyWatched = Keys_Watch('Y', &g_testKeys, 1, ToggleKey);
     Log("fbrfix: Y toggles the fix on / off%s", g_keyWatched ? "" : " (ERROR: key poll not started)");
 }
@@ -1195,8 +1287,8 @@ void FbrFix_Remove() {
             "early reload orders %ld, second reload orders skipped %ld", g_fDone, g_fFiring, g_fCut, g_fNotFired,
             g_fEarly, g_fExitSkipped);
     if (g_base)
-        Log("fbrfix: quorum: fired %ld, waited %ld ticks; fire orders not given to men reloading %ld", g_fQuorum,
-            g_fQuorumWait, g_fSatOut);
+        Log("fbrfix: quorum: fired %ld, waited %ld ticks; fire orders not given to men reloading %ld; turns moved "
+            "to a front-most loaded group %ld", g_fQuorum, g_fQuorumWait, g_fSatOut, g_fSwitched);
     if (g_probe) {
         EnterCriticalSection(&g_cs);
         FILE* fs[] = { g_fStates, g_fRows, g_fReload, g_fOrders, g_fUnits, g_fInfo, g_fRaw, g_fFix };

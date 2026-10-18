@@ -95,9 +95,40 @@ ready, instead of waiting for the last reloader.
 - Game folder: the user had swapped in the part-2 build (`dinput8.dll.fbrfix2`) and removed the
   `.bak` before part 3; for the runs it was set aside as `.fbrfix2` again.
 
+## Session 1, part 4, 2026-10-18 (front rank first, one final fix)
+
+User question: what happens on a re-form into a different depth; which rank fires when it is
+rank 5's turn but rank 1 has reloaded. Static: the group table is filled from the formation by
+`FUN_101540f0` (task slot +0x78 per array position) on the task's first tick (slot +4
+`FUN_101b6d80`) and on REFORM enter; START byte +0x3c; ADVANCE finishes the task when slot +0x74
+`FUN_10173550` finds groups 0..2 thinned out. User decisions: another ready rank fires when the
+current one cannot; the front-most rank has priority; every rank (cap 8 -> 64); "group all the
+parts into one final fix" (chosen: one coherent fix in code and docs, no squash).
+
+- Front rank first in `HandleGroupReady` (per-group pass; eligible = 75 % loaded; writes +0x40;
+  `FBRFIX_FRONT_FIRST=0` off). Runs 160744 / 161038 / 161331 (reform_deep: front / strict /
+  off), 161624.. 163711 (the three replays x front / strict / off).
+- Found in those runs: (1) loaded rear ranks without a line of fire took the turn again and
+  again (Ikko: group 2 x10, no shot) -> per-group line-of-fire memory (`LosRec`, a group may
+  jump only if >= 25 % of its men fired on its last turn; table signature resets it); runs
+  165131.. 165936. (2) a front rank taking the turn from its kneeling reload pose: one man aimed
+  22 s, the turn never ended (Hattori unit 2) -> the switch gives the group the wait entry's
+  ready orders (slot +0x84 flag 0) and answers "not yet" for that tick; `FBRFIX_FIRE_GRACE`
+  default 50 (5 s after the last shot) as a safety net. Final runs 170430 / 170711 / 171004 /
+  171235: shots off -> on Hattori 153 -> 194, Ikko 161 -> 206, generic 230 -> 244, reform
+  104 -> 129 (strict order 121); front vs strict in Hattori 194 / 240 (FAW 114 in both: maybe
+  real, maybe drift; open).
+- Harness bug found: fake soldiers were 0x400 bytes but the class sits at +0x48C (heap overflow
+  since part 1, random crashes once more scenes ran); now 0x600. 50 repeated runs clean.
+- Harness: fix 42, off 26, selfcheck 5, cap3 6, firegrace 5, probe 28.
+- Docs rewritten as one fix (README, ARCHITECTURE, source header); this file keeps the parts.
+- Game folder: the user had installed the part-3 build as `dinput8.dll`; kept as
+  `dinput8.dll.fbrfix3` during the runs.
+
 Next (not started, waiting for the user):
-- Fire the next loaded group instead of group 0 after a task restart; Ikko Ikki rear ranks
-  without a line of fire; public release source.
+- Hattori front-first vs strict (194 / 240) with more runs or a longer battle; Ikko Ikki rear
+  ranks without a line of fire; the depleted test runs less often with front-first; public
+  release source.
 - Decide the 3-group cap option and the grace time; then a public release source and the
   combined package (fixes/README.md).
 - Matchlock samurai / warrior monks, longer battles (the replays end 30..50 s after contact).

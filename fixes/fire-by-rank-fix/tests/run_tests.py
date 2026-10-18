@@ -6,10 +6,11 @@ hooked game code on fake group tasks, units and soldiers (the fix), and on fake 
 states (the probe). Six runs, each in a fresh folder under build/test_fbrfix/:
   fix        fix on: officer not waited for, reloading men are (under the quorum), grace time,
              order skip, Y, early reload orders, 75 % quorum, no fire order for men
-             reloading, a 5-rank unit gets 5 groups                                          (35)
+             reloading, a 5-rank unit gets 5 groups, front rank first, 12 ranks              (42)
   off        FBRFIX_OFF=1: the game's own answers until Y                                    (26)
   selfcheck  20 broken group tasks switch the fix off, Y refused                             (5)
-  cap3       FBRFIX_ALL_RANKS=0 FBRFIX_QUORUM=0: 3 groups kept, one reloader holds a group   (5)
+  cap3       FBRFIX_ALL_RANKS=0 FBRFIX_QUORUM=0 FBRFIX_FRONT_FIRST=0: 3 groups kept, one
+             reloader holds a group, the turn is not moved                                   (6)
   firegrace  FBRFIX_EARLY_RELOAD=0 FBRFIX_FIRE_GRACE=20: a turn ends 2 s after the last shot (5)
   probe      FBRFIX_PROBE=1: transitions, reloads, orders, CSV files                         (28)
 The proxy is copied as fbrfix_proxy.dll first (a module named dinput8.dll would clash with the
@@ -28,7 +29,7 @@ ARGS = [a for a in sys.argv[1:] if not a.startswith('--')]
 GAME = ARGS[0] if ARGS else r'E:\SteamLibrary\steamapps\common\Total War SHOGUN 2'
 BUILD = os.path.join(REPO, 'build')
 OUT = os.path.join(BUILD, 'test_fbrfix')
-EXPECT = {'fix': 35, 'off': 26, 'selfcheck': 5, 'cap3': 5, 'firegrace': 5, 'probe': 28}
+EXPECT = {'fix': 42, 'off': 26, 'selfcheck': 5, 'cap3': 6, 'firegrace': 5, 'probe': 28}
 
 game_dll = os.path.join(GAME, 'empire.retail.dll')
 for p in (game_dll, os.path.join(BUILD, 'dinput8.dll'), os.path.join(BUILD, 'fbrfix_test.exe')):

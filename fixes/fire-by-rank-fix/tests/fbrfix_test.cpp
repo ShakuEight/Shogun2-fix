@@ -15,9 +15,10 @@
 //              and the exit's second order to him is skipped (early reload)
 //   off        FBRFIX_OFF=1: the same scenes give the game's own answers until Y
 //   selfcheck  20 group tasks with a broken layout switch the fix off for good (Y refused)
-//   cap3       FBRFIX_ALL_RANKS=0 FBRFIX_QUORUM=0: a unit 5 ranks deep keeps the game's 3 groups,
-//              one man reloading holds his group (fix mode checks the defaults: 5 groups, the
-//              75 % quorum and the fire order hook FUN_101883f0)
+//   cap3       FBRFIX_ALL_RANKS=0 FBRFIX_QUORUM=0 FBRFIX_FRONT_FIRST=0: a unit 5 ranks deep keeps
+//              the game's 3 groups, one man reloading holds his group, the turn is never moved
+//              (fix mode checks the defaults: every rank, the 75 % quorum, the fire order hook
+//              FUN_101883f0, front rank first)
 //   firegrace  FBRFIX_EARLY_RELOAD=0 FBRFIX_FIRE_GRACE=20: no early reload orders; the
 //              fire-completed test FUN_1017b9d0 ends the turn 20 ticks after the group's last shot
 //   probe      FBRFIX_PROBE=1: the probe logs transitions of shooting machines only, samples
@@ -114,7 +115,7 @@ static Unit MakeUnit(int n) {
     u.unit = Zalloc(0x600);
     u.arr = (uint32_t*)calloc(n, 4);
     for (int i = 0; i < n; i++) {
-        uint8_t* s = Zalloc(0x400);
+        uint8_t* s = Zalloc(0x600);           // the fix reads up to +0x48C (class)
         Put32(s, 0, Addr(Zalloc(0x200)));      // some vtable
         PutF(s, 0x48, 10.0f + i);
         PutF(s, 0x50, 20.0f);
@@ -163,7 +164,8 @@ static void Transition(uint8_t* ctx, uint8_t* oldState, uint8_t* next) {
 static long C(int i) { long c[32] = {}; g_counters(c); return c[i]; }
 enum { C_PROBE = 0, C_FIXON = 7, C_READY = 8, C_GRACE = 9, C_RELOADING = 10, C_WAITING = 11, C_EXCLUDED = 12,
        C_SKIPPED = 13, C_GIVEN = 14, C_BADTASK = 15, C_ALLRANKS = 16, C_EARLY = 17, C_DONE = 18, C_FIRING = 19,
-       C_CUT = 20, C_NOTFIRED = 21, C_EXITSKIP = 22, C_QUORUM = 23, C_QUORUMWAIT = 24, C_SATOUT = 25 };
+       C_CUT = 20, C_NOTFIRED = 21, C_EXITSKIP = 22, C_QUORUM = 23, C_QUORUMWAIT = 24, C_SATOUT = 25,
+       C_SWITCHED = 26 };
 
 static int Lines(const char* dir, const char* name) {
     char path[MAX_PATH];
@@ -327,15 +329,18 @@ static void RunFix(bool on) {
     uint32_t r = Test(g);
     if (on) CHECK(r == 1 && C(C_READY) == 1 && C(C_EXCLUDED) == 1, "G1 officer outside the shooter class is not waited for");
     else    CHECK(r == 0 && C(C_READY) == 0, "G1 fix off: the game waits for the officer (vanilla)");
-    // 2: a gun man of the group still reloading (reload time left, his reload order open)
+    // 2: a gun man of the group still reloading (reload time left, his reload order open); the
+    // other groups are reloading too, so no other group is loaded enough to fire instead
     SetReady(g.u.s[0], true);
     SetReload(g.u.s[2], 4.0f);
     SetReady(g.u.s[2], false);
+    for (int i = 4; i < 12; i++) { SetReload(g.u.s[i], 4.0f); SetReady(g.u.s[i], false); }
     r = Test(g);
-    CHECK(r == 0, "G2 a reloading gun man keeps the group waiting");
+    CHECK(r == 0, "G2 a reloading gun man keeps the group waiting (1 of 3: under the quorum)");
     if (on) CHECK(C(C_RELOADING) == 1, "G2b counted as reloading");
     SetReload(g.u.s[2], 0.0f);
     SetReady(g.u.s[2], true);
+    for (int i = 4; i < 12; i++) { SetReload(g.u.s[i], 0.0f); SetReady(g.u.s[i], true); }
     // 3: a gun man loaded but slow to his ready pose: waited for until the grace time, then not
     SetReady(g.u.s[3], false);
     tick = 300;
@@ -430,19 +435,104 @@ static void EarlyScene(bool on) {
 }
 
 // --- quorum: 16 gun men in two groups of 8 (group 0 = soldiers 0..7), the task at 2 groups ------
+// Group 1 is reloading throughout, so only group 0 can be chosen to fire.
 static Group MakeQuorumGroup() {
     Group g = MakeGroup();
     Unit u = MakeUnit(16);
     for (int i = 0; i < 16; i++) {
         g.table[i] = i / 8;
         Put32(u.s[i], 0x48C, 8);
-        SetReady(u.s[i], true);
-        SetReload(u.s[i], 0.0f);
+        SetReady(u.s[i], i < 8);
+        SetReload(u.s[i], i < 8 ? 0.0f : 12.0f);
     }
     g.u = u;
     Put32(g.task, 0x04, Addr(u.unit));
     Put32(g.task, 0x38, 2);
     return g;
+}
+
+// --- front rank first: 16 gun men in four groups of 4 (by index), the task at 4 groups ---------
+static void Reloading(uint8_t* s, float t);
+static Group MakeRanks(int n, int perRank, uint32_t groups) {
+    Group g = MakeGroup();
+    Unit u = MakeUnit(n);
+    for (int i = 0; i < n; i++) {
+        g.table[i] = i / perRank;
+        Put32(u.s[i], 0x48C, 8);
+        SetReady(u.s[i], true);
+        SetReload(u.s[i], 0.0f);
+    }
+    g.u = u;
+    Put32(g.task, 0x04, Addr(u.unit));
+    Put32(g.task, 0x38, groups);
+    return g;
+}
+
+static uint32_t Current(Group& g) { uint32_t c; memcpy(&c, g.task + 0x40, 4); return c; }
+
+static void FrontScene() {
+    // a: group 2's turn but it is reloading; group 0 (front) has reloaded, group 1 still reloading
+    Group g = MakeRanks(16, 4, 4);
+    for (int i = 4; i < 12; i++) Reloading(g.u.s[i], 8.0f);
+    Put32(g.task, 0x40, 2);
+    long sw0 = C(C_SWITCHED), given = C(C_GIVEN);   // DeepScene's later-group test already moved one turn
+    SetTick(2000);
+    uint32_t r = Test(g);
+    CHECK(r == 0 && Current(g) == 0 && C(C_SWITCHED) == sw0 + 1 && C(C_GIVEN) == given + 4,
+          "R1 group 2 reloading: the front group, loaded, takes the turn and gets its 4 ready orders");
+    SetTick(2001);
+    r = Test(g);
+    CHECK(r == 1 && Current(g) == 0, "R1b ... and fires once its men are ready");
+    // b: group 1's turn, fully ready; group 0 has 3 of 4 loaded: the front group gets the turn and
+    // fires on the quorum 1 s later, without its reloader
+    Group h = MakeRanks(16, 4, 4);
+    Reloading(h.u.s[0], 3.0f);
+    Put32(h.task, 0x40, 1);
+    long q = C(C_QUORUM);
+    SetTick(2100);
+    r = Test(h);
+    CHECK(r == 0 && Current(h) == 0, "R2 group 0 at 75 percent loaded takes the turn from the ready group 1, waits 1 s");
+    for (uint32_t t = 2101; t <= 2111; t++) { SetTick(t); r = Test(h); }
+    CHECK(r == 1 && C(C_QUORUM) == q + 1, "R2b ... then fires on the quorum");
+    // c: no group has 75 percent loaded: the turn stays, the group waits
+    Group k = MakeRanks(16, 4, 4);
+    for (int i = 0; i < 16; i++) if (i % 4 != 0) Reloading(k.u.s[i], 6.0f);   // 1 of 4 loaded per group
+    Put32(k.task, 0x40, 3);
+    long sw = C(C_SWITCHED);
+    SetTick(2200);
+    r = Test(k);
+    CHECK(r == 0 && Current(k) == 3 && C(C_SWITCHED) == sw, "R3 no group loaded enough: the turn stays, the group waits");
+    // e: a formation 12 ranks deep gets 12 groups (no cap of 8)
+    Group d = MakeRanks(24, 2, 3);
+    SetTick(2300);
+    Test(d);
+    uint32_t n;
+    memcpy(&n, d.task + 0x38, 4);
+    CHECK(n == 12, "R4 a 12-rank formation gets 12 groups");
+    // f: group 0 had its turn without a shot (no line of fire): loaded, but it may not take the
+    // turn from group 1 until it has fired on a turn of its own
+    Group l = MakeRanks(16, 4, 4);
+    SetTick(2500);
+    Test(l);                                    // group 0's turn: all loaded and ready, fires
+    l.task[0x44] = 1;
+    SetTick(2501);
+    uint32_t done = Done(l);                    // nobody fired: every fire order ended without a shot
+    Put32(l.task, 0x40, 1);
+    sw = C(C_SWITCHED);
+    SetTick(2560);
+    r = Test(l);
+    CHECK(done == 1 && r == 1 && Current(l) == 1 && C(C_SWITCHED) == sw,
+          "R5 a front group whose last turn had no shot keeps out of turn; group 1 fires");
+}
+
+// FBRFIX_FRONT_FIRST=0: group 2's turn, reloading; the loaded front group does not take it.
+static void FrontOffScene() {
+    Group g = MakeRanks(16, 4, 4);
+    for (int i = 4; i < 12; i++) Reloading(g.u.s[i], 8.0f);
+    Put32(g.task, 0x40, 2);
+    uint32_t r = 0;
+    for (uint32_t t = 2400; t < 2405; t++) { SetTick(t); r = Test(g); }
+    CHECK(r == 0 && Current(g) == 2 && C(C_SWITCHED) == 0, "R0 FBRFIX_FRONT_FIRST=0: the turn stays with group 2, which waits");
 }
 
 static void Reloading(uint8_t* s, float t) { SetReload(s, t); SetReady(s, false); }   // his reload order is open
@@ -568,6 +658,7 @@ int main(int argc, char** argv) {
     SetEnvironmentVariableA("FBRFIX_OFF", off ? "1" : nullptr);
     SetEnvironmentVariableA("FBRFIX_ALL_RANKS", cap3 ? "0" : nullptr);
     SetEnvironmentVariableA("FBRFIX_QUORUM", cap3 ? "0" : nullptr);
+    SetEnvironmentVariableA("FBRFIX_FRONT_FIRST", cap3 ? "0" : nullptr);
     SetEnvironmentVariableA("FBRFIX_QUORUM_WAIT", nullptr);
     SetEnvironmentVariableA("FBRFIX_EARLY_RELOAD", fireGrace ? "0" : nullptr);
     SetEnvironmentVariableA("FBRFIX_FIRE_GRACE", fireGrace ? "20" : nullptr);
@@ -605,9 +696,9 @@ int main(int argc, char** argv) {
     } else {
         CHECK(C(C_PROBE) == 0, "N1 probe off without FBRFIX_PROBE");
         if (selfcheck) RunSelfcheck();
-        else if (cap3) { DeepScene(false); QuorumOffScene(); }
+        else if (cap3) { DeepScene(false); QuorumOffScene(); FrontOffScene(); }
         else if (fireGrace) FireGraceScene();
-        else { RunFix(!off); EarlyScene(!off); QuorumScene(!off); if (!off) DeepScene(true); }
+        else { RunFix(!off); EarlyScene(!off); QuorumScene(!off); if (!off) { DeepScene(true); FrontScene(); } }
         FreeLibrary(proxy);
     }
     bool restored = true;

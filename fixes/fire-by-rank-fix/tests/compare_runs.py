@@ -20,6 +20,7 @@ with FBRFIX_PROBE=1 (fbr_fix.csv too when present). Per unit that ran the group 
   noshot    group turns (ORDER_GROUP_FIRE .. ADVANCE_GROUP) without a single shot
   early     early reload orders, cut = turns ended by the fire grace (fbr_fix.csv)
   quorum    volleys fired on the quorum (men still reloading), sat = fire orders not given to them
+  switch    turns moved to the front-most loaded group; then per unit the groups in firing order
 Fire-at-will units (no group task) get inrange / first / shots / cycle for reference.
 """
 import csv
@@ -143,6 +144,8 @@ def analyse(run):
         rec['cut'] = sum(1 for r in fx if r['unit'] == u and r['answer'] == 'cut')
         rec['quorum'] = sum(1 for r in fx if r['unit'] == u and r['answer'] == 'quorum')
         rec['satout'] = sum(1 for r in fx if r['unit'] == u and r['answer'] == 'sat_out')
+        rec['switch'] = sum(1 for r in fx if r['unit'] == u and r['answer'] == 'switched')
+        rec['order'] = ' '.join(r['row'] for r in sorted(g, key=T) if r['new'] == 'ORDER_GROUP_FIRE_STATE')
         rec['grace'] = sum(1 for r in fx if r['unit'] == u and r['answer'] == 'grace')
         rec['skipped'] = sum(1 for r in fx if r['unit'] == u and r['answer'] == 'order_skipped')
         out.append(rec)
@@ -156,15 +159,17 @@ def f(v, fmt='%.1f'):
 for run in args:
     end, recs = analyse(run)
     print('%s  (end %.1f s)' % (run, end / 10.0))
-    print('  %-9s %-5s %8s %8s %7s %7s %6s %7s %7s %6s %5s %5s %5s %6s %5s %8s %6s %5s %4s %6s %4s' %
+    print('  %-9s %-5s %8s %8s %7s %7s %6s %7s %7s %6s %5s %5s %5s %6s %5s %8s %6s %5s %4s %6s %4s %6s' %
           ('unit', 'mode', 'inrange', 'first', 'delay', 'volleys', 'wait1', 'maxwait', 'hang', 'shots', 'grace', 'skip',
-           'idle', 'idle90', 'cycle', 'wrapleft', 'noshot', 'early', 'cut', 'quorum', 'sat'))
+           'idle', 'idle90', 'cycle', 'wrapleft', 'noshot', 'early', 'cut', 'quorum', 'sat', 'switch'))
     for r in recs:
         if r['inrange'] is None and not r['shots']:
             continue
         delay = (r['first'] - r['inrange']) / 10.0 if r['first'] is not None and r['inrange'] is not None else None
-        print('  %-9s %-5s %8s %8s %7s %7d %6s %7s %7.1f %6d %5d %5d %5s %6s %5s %8s %6d %5d %4d %6d %4d' %
+        print('  %-9s %-5s %8s %8s %7s %7d %6s %7s %7.1f %6d %5d %5d %5s %6s %5s %8s %6d %5d %4d %6d %4d %6d' %
               (r['unit'], 'FBR' if r['group'] else 'FAW', f(r['inrange'] and r['inrange'] / 10.0),
                f(r['first'] and r['first'] / 10.0), f(delay), r['volleys'], f(r['wait1']), f(r['maxwait']),
                r['hang'], r['shots'], r['grace'], r['skipped'], f(r['idle']), f(r['idle90']), f(r['cycle']), f(r['wrapleft']),
-               r['noshot'], r['early'], r['cut'], r['quorum'], r['satout']))
+               r['noshot'], r['early'], r['cut'], r['quorum'], r['satout'], r['switch']))
+        if r['group']:
+            print('            fired groups: %s' % (r['order'] or '-'))

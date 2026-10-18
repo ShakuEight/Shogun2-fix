@@ -17,13 +17,14 @@ running, the game not running, `version.dll` installed (`python tools\autorun\au
    python -I fixes\fire-by-rank-fix\tests\compare_runs.py "<game>\fbrfix_runs\<off stamp>" "<game>\fbrfix_runs\<on stamp>"
    ```
 
-   Add `--env FBRFIX_ALL_RANKS=1`, `--env FBRFIX_GRACE=<ticks>`, `--env FBRFIX_EARLY_RELOAD=0` or
-   `--env FBRFIX_FIRE_GRACE=<ticks>` for the options. Each replay takes about 2.5 minutes at
+   Add `--env FBRFIX_ALL_RANKS=0`, `FBRFIX_FRONT_FIRST=0`, `FBRFIX_QUORUM=<percent>`,
+   `FBRFIX_QUORUM_WAIT=<ticks>`, `FBRFIX_GRACE=<ticks>`, `FBRFIX_EARLY_RELOAD=0` or
+   `FBRFIX_FIRE_GRACE=<ticks>` to switch one rule off or change it (README.md). Each replay takes about 2.5 minutes at
    speed 1. A replay with any fix active no longer follows its recording once the simulation
    changes, so shot totals vary by +-20 % between variants (the fire-at-will units' totals show
    the spread); `idle`, `cycle` and `wrapleft` are per man and stable.
 4. Read `pathfix_log.txt` in the game folder: `fbrfix: fix ON`, `early reload ON; fire grace
-   ...`, seven hook lines with the probe (three without), and at exit the group test and
+   ...`, the quorum and front-rank lines, eight hook lines with the probe (four without), and at exit the group test and
    fire-completed test counters.
 
 ## Probe files (`<game>\fbrfix_runs\<stamp>\`)

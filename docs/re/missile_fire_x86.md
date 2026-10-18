@@ -49,9 +49,19 @@ the fire-by-rank ability run this task.
 | +0x40 | current group (0 = front) |
 | +0x44 | byte: the current group was ordered to fire |
 | +0x45 | byte: cleared when the group number wraps |
-| +0x48 | group per soldier, a dword per soldier index (soldier + 0x218); filled from the formation, one group per rank |
+| +0x48 | group per soldier, a dword per soldier index (soldier + 0x218); filled from the formation, one group per rank (see below) |
 
-States (getters at vtable + 0x58 .. + 0x70): START, REFORM, then the cycle:
+The group count is set once, in the constructor: the formation's rank count (`FUN_10196bb0`,
+the rank of the last position + 1), capped at 3. The group table is filled by `FUN_101540f0`:
+for each position of the unit's soldier array, its rank from task slot + 0x78 (`FUN_10171570`,
+a call into the formation object at unit + 0x624), stored under the soldier's index. It runs on
+the task's first tick (task slot + 4, `FUN_101b6d80`, when no re-form is needed) and on every
+REFORM enter (`FUN_101a5600`, which also pushes the unit's re-form behaviour). So a re-form or a
+new task gets the ranks of the new formation; a man's reload time stays his own.
+
+States (getters at vtable + 0x58 .. + 0x70): START (its update reads byte + 0x3c, "re-form
+first", and goes to REFORM or straight to the wait), REFORM (done when the task is on top of the
+unit's behaviour stack again), then the cycle:
 
 1. **WAIT_FOR_GROUP_ALL_LOADED_AND_READY**. On entry every man of the current and later groups
    gets a ready / reload order (task slot + 0x84 = `FUN_10188290`: order type 5, with a kneel
@@ -67,8 +77,10 @@ States (getters at vtable + 0x58 .. + 0x70): START, REFORM, then the cycle:
    group's men their reload orders (slot + 0x84 with the after-fire flag: kneeling), except for
    the last group, whose men get theirs from the next wait's entry (`FUN_1019a9a0`, flag 0, every
    man of the current and later groups).
-4. **ADVANCE_GROUP**: the group number goes up; past the last group it wraps to 0 (or the task
-   finishes and the missile machine re-forms the unit and starts a new one).
+4. **ADVANCE_GROUP**: the group number goes up; past the last group it wraps to 0, or the task
+   finishes when task slot + 0x74 (`FUN_10173550`) finds groups 0 to 2 thinned out (any of them
+   under half its strength at construction); the missile machine then re-forms the unit and
+   starts a new task. That check counts only groups 0 to 2 and runs only at the wrap.
 
 The ready test (`FUN_103cbe40`, the one decoded for movement): a man with an order (byte
 + 0x384 = 1) that is not completed (byte + 0x308 not 1) is not ready, unless the action at
