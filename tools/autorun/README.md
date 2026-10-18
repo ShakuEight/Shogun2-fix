@@ -40,6 +40,7 @@ discovery record: `docs/runbook.md`.
 | `--no-stall-end` | Do not treat a 30 s tick stall as the end |
 | `--speed N` | Adds `replay_speed N;`: the battle runs N times faster (measured: 4 gives 40 ticks per second instead of 10). pathfix's fix windows run on game time, but its capture samples on the wall clock, so captures get N times fewer samples per game second |
 | `--script-line "x y;"` | Any extra `user.script.txt` line for this run |
+| `--env NAME=VALUE` | Extra environment variable for the game process (repeatable), e.g. `AIMFIX_OFF=1` or `AIMFIX_PROBE=1` for the aim fix's A/B and probe runs |
 | `--verbose` | Also print the proxy's 5 s heartbeats |
 
 Exit code 0 = battle played to its end and the game closed, 1 = setup error, 2 = timeout,

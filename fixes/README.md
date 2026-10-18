@@ -1,10 +1,11 @@
 # Fixes
 
-Each folder here is one game fix compiled into the same `dinput8.dll`. Today there is one:
+Each folder here is one game fix compiled into the same `dinput8.dll`:
 
 | Fix | Entry points | CMake option |
 |---|---|---|
 | `pathfix/` | `Pathfix_Install`, `Pathfix_Remove` | `FIX_PATHFIX` |
+| `aimfix/` | `Aimfix_Install`, `Aimfix_Remove` | `FIX_AIMFIX` (dev build only so far) |
 
 ## Adding a fix
 
@@ -75,7 +76,7 @@ Each folder here is one game fix compiled into the same `dinput8.dll`. Today the
 |---|---|---|
 | Hook engine: `HookDef` table, byte check, trampolines, naked stubs, `HandleHit` dispatch | hook table near the top, install at `Pathfix_Install` | Two engines patching the same function would chain unpredictably |
 | Crash filter and `crash.dmp` writer | `AssertCrashFilter` and the fault ring | Only one top-level exception filter can win |
-| Key polling (I / O / P), tones | `DumpThread`, `KeyEdge`, `FixBeep` | Two fixes reading the same keys |
+| Key polling (I / O / P), tones | `DumpThread`, `KeyEdge`, `FixBeep` | Two fixes reading the same keys (aimfix polls U in its own thread and uses system sounds) |
 | Capture window, flush thread, CSV writers | `DumpThread`, `FlushAll`, `WriteAllOnce` | Both would write into the same run folder |
 | Game clock | `GameNow`, read in the `FUN_101bc880` hook | Needed by any game-time window |
 | Guarded memory reads | `MemcpyTry`, `ReadDword`, `WriteByteTry` | None, only duplication |

@@ -20,6 +20,7 @@ endif()
 option(PUBLIC_RELEASE "Build the public release DLL: release sources only, no log, no capture, no keys" OFF)
 option(BUILD_TESTS "Build the offline harness executables (dev build only)" ON)
 option(FIX_PATHFIX "Path fix: units keep formation through gates, doorways and corners (fixes/pathfix)" ON)
+option(FIX_AIMFIX "Aim fix: artillery aims at the middle of the target unit (fixes/aimfix)" ON)
 option(TOOL_AUTORUN "Dev tool: version.dll proxy for unattended replay runs (tools/autorun); ignored with PUBLIC_RELEASE" OFF)
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
@@ -48,6 +49,9 @@ set_target_properties(dinput8 PROPERTIES PREFIX "" OUTPUT_NAME "dinput8")
 # --- fixes (one line per fix) --------------------------------------------------------------
 if(FIX_PATHFIX)
     include(fixes/pathfix/pathfix.cmake)
+endif()
+if(FIX_AIMFIX AND NOT PUBLIC_RELEASE)
+    include(fixes/aimfix/aimfix.cmake)
 endif()
 
 # --- developer tools (separate proxy DLLs, never part of the public release) ---------------

@@ -32,6 +32,10 @@ HOOKS = [
     ("FUN_103dafb0", 0x3DAFB0, "56 8B F1 8B 46 28"),
     ("FUN_103df3f0+0x2D0", 0x3DF6C0, "80 BB 71 04 00 00 01"),
     ("FUN_10367600", 0x367600, "55 8B EC 83 E4 F0"),   # v24 integrator entry (docs/prologues_v24.txt)
+    # aimfix (docs/re/prologues_aimfix.txt): the fix hook, then the two probe-only hooks
+    ("FUN_1047fd90", 0x47FD90, "53 56 8B F1 80 7E 7C 00"),
+    ("FUN_103a6850", 0x3A6850, "83 EC 0C 56 8B F1"),
+    ("FUN_1045a8a0", 0x45A8A0, "F3 0F 10 44 24 10"),
 ]
 
 

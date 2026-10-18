@@ -7,7 +7,7 @@ own folder. Install by copying it in, uninstall by deleting it.
 | Fix | Problem it fixes | State |
 |---|---|---|
 | [**pathfix**](fixes/pathfix/README.md) | Units ordered through gates, doorways and round corners stop in a stretched block and file through one man at a time | Public release 1.0 |
-| aiming fix | | Planned |
+| [**aimfix**](fixes/aimfix/README.md) | Artillery ordered to fire at a unit aims at the end of the enemy line instead of its middle | Dev build |
 | shooting fix | | Planned |
 
 ## For players
@@ -61,6 +61,7 @@ proxy/              dinput8 proxy core: DLL entry, export forwarding, logging, f
 fixes/
   README.md         how to add a fix
   pathfix/          the path fix: dev build v42, public release source, harness, docs
+  aimfix/           the artillery aim fix: dev build, harness, docs (no release source yet)
 docs/re/            what is known about Empire.Retail.dll, shared by all fixes: function
                     maps x86 to x64 and engine decodes (Ghidra output stays local)
 tools/

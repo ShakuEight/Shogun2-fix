@@ -7,7 +7,7 @@ Runtime fixes for Total War: Shogun 2 (the original 32-bit `Empire.Retail.dll`),
 | Fix | Folder | State |
 |---|---|---|
 | pathfix: formation through gates, doorways, corners | `fixes/pathfix/` | public release 1.0, dev build v42 |
-| aiming fix | (planned) | not started |
+| aimfix: artillery aims at the middle of the target unit | `fixes/aimfix/` | dev build (2026-10-18), no release |
 | shooting fix | (planned) | not started |
 
 Developer tools are separate proxy DLLs under `tools/` (never in a release):

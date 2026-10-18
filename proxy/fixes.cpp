@@ -7,10 +7,17 @@
 void Pathfix_Install();    // fixes/pathfix/src/pathfix.cpp
 void Pathfix_Remove();
 #endif
+#ifdef FIX_AIMFIX
+void Aimfix_Install();     // fixes/aimfix/src/aimfix.cpp
+void Aimfix_Remove();
+#endif
 
 static const FixModule kFixes[] = {
 #ifdef FIX_PATHFIX
     { "pathfix", Pathfix_Install, Pathfix_Remove },
+#endif
+#ifdef FIX_AIMFIX
+    { "aimfix", Aimfix_Install, Aimfix_Remove },
 #endif
     { nullptr, nullptr, nullptr }
 };

@@ -43,6 +43,7 @@ python -u tools\autorun\autorun.py "<replay>" [--capture] [--speed N] [--collect
 | `--timeout N` | battle limit in seconds (default 3600); `--load-timeout` launch to battle (300) |
 | `--no-minimize`, `--keep-open` | only when the user wants to watch or inspect the end screen |
 | `--script-line "cmd args;"` | extra `user.script.txt` line for this run only |
+| `--env NAME=VALUE` | extra environment variable for the game (repeatable): `AIMFIX_OFF=1` fix off, `AIMFIX_PROBE=1` aim-fix capture into `<game>\aimfix_runs\` (fixes/aimfix/docs/runbook.md) |
 | `--verbose` | include the 5 s heartbeats (tick, phase) in the transcript |
 
 Timing at speed 1: about 45 s loading, then the battle in real time (the test replay: 470 s of
