@@ -87,6 +87,14 @@ HOOKS = [
     ("FUN_101273f0", 0x1273F0, "56 57 FF 74 24 10"),   # melee attack task
     # (docs/re/prologues_zombiefix_fix.txt) the fix: rout interrupt state tick
     ("FUN_101bd3b0", 0x1BD3B0, "56 57 8B F9 8B 47 10"),
+    # (docs/re/prologues_zombiefix_rout.txt) probe-only: rout set-up, stack pop, yari wall attack task
+    ("FUN_101a9bf0", 0x1A9BF0, "51 56 8B F1 57"),
+    ("FUN_1019e480", 0x19E480, "56 8B F1 80 BE 50 04 00 00 00"),
+    ("FUN_101ceb40", 0x1CEB40, "56 57 FF 74 24 10"),
+    # (docs/re/prologues_zombiefix_stop.txt) probe-only: group stop, attack command post
+    ("FUN_101604a0", 0x1604A0, "56 8B F1 80 BE 08 05 00 00 01"),
+    ("FUN_103daa80", 0x3DAA80, "56 8B F1 8B 46 04"),
+    ("FUN_101605f0", 0x1605F0, "56 57 8B F9 8B 77 10"),   # (prologues_zombiefix_stop2.txt) stop every group
 ]
 
 

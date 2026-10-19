@@ -39,8 +39,8 @@ static TestKeys g_keys = nullptr;
 #define CHECK(cond, name) do { if (cond) { g_pass++; printf("PASS %s\n", name); } \
                                else { g_fail++; printf("FAIL %s\n", name); } } while (0)
 
-struct Site { uint32_t rva; int origLen; uint8_t orig[8]; uint8_t stub[32]; int stubLen; };
-enum { S_TRANS = 0, S_PIKE, S_KNOCK, S_REFORM, S_INTERCEPT, S_ATTACK, S_ROUTTICK, SITES };
+struct Site { uint32_t rva; int origLen; uint8_t orig[10]; uint8_t stub[32]; int stubLen; };
+enum { S_TRANS = 0, S_PIKE, S_KNOCK, S_REFORM, S_INTERCEPT, S_ATTACK, S_ROUTTICK, S_SETUP, S_CLEAR, S_YARI, S_STOP, S_POST, S_STOPALL, SITES };
 static const Site kSites[SITES] = {
     { 0x1374D0B, 5, { 0x89, 0x7E, 0x04, 0x8B, 0xCF }, { 0xC3 }, 1 },                           // ret (entered by CALL)
     // the pike outcome: result {outcome = [attacker+0x5F0], who = attacker}; returns the result; ret 0xC
@@ -65,9 +65,22 @@ static const Site kSites[SITES] = {
     { 0x1273F0, 6, { 0x56, 0x57, 0xFF, 0x74, 0x24, 0x10 }, { 0x83, 0xC4, 0x04, 0x5F, 0x5E, 0x8B, 0xC1, 0xC2, 0x0C, 0x00 }, 10 },
     // the rout tick: after PUSH ESI; PUSH EDI; MOV EDI,ECX; MOV EAX,[EDI+0x10]: pop edi; pop esi; ret
     { 0x1BD3B0, 7, { 0x56, 0x57, 0x8B, 0xF9, 0x8B, 0x47, 0x10 }, { 0x5F, 0x5E, 0xC3 }, 3 },
+    // the rout set-up: after PUSH ECX; PUSH ESI; MOV ESI,ECX; PUSH EDI: the game's first store
+    // (group +0x2781 = 1), then pop edi; pop esi; pop ecx; ret
+    { 0x1A9BF0, 5, { 0x51, 0x56, 0x8B, 0xF1, 0x57 }, { 0xC6, 0x86, 0x81, 0x27, 0x00, 0x00, 0x01, 0x5F, 0x5E, 0x59, 0xC3 }, 11 },
+    // the stack pop: after PUSH ESI; MOV ESI,ECX; CMP byte [ESI+0x450],0: pop esi; ret 4
+    { 0x19E480, 10, { 0x56, 0x8B, 0xF1, 0x80, 0xBE, 0x50, 0x04, 0x00, 0x00, 0x00 }, { 0x5E, 0xC2, 0x04, 0x00 }, 4 },
+    { 0x1CEB40, 6, { 0x56, 0x57, 0xFF, 0x74, 0x24, 0x10 }, { 0x83, 0xC4, 0x04, 0x5F, 0x5E, 0x8B, 0xC1, 0xC2, 0x0C, 0x00 }, 10 },
+    // the group stop: after PUSH ESI; MOV ESI,ECX; CMP byte [ESI+0x508],1: pop esi; ret
+    { 0x1604A0, 10, { 0x56, 0x8B, 0xF1, 0x80, 0xBE, 0x08, 0x05, 0x00, 0x00, 0x01 }, { 0x5E, 0xC3 }, 2 },
+    // the attack command post: after PUSH ESI; MOV ESI,ECX; MOV EAX,[ESI+4]: pop esi; ret 4
+    { 0x3DAA80, 6, { 0x56, 0x8B, 0xF1, 0x8B, 0x46, 0x04 }, { 0x5E, 0xC2, 0x04, 0x00 }, 4 },
+    // stop every group: after PUSH ESI; PUSH EDI; MOV EDI,ECX; MOV ESI,[EDI+0x10]: pop edi; pop esi; ret
+    { 0x1605F0, 7, { 0x56, 0x57, 0x8B, 0xF9, 0x8B, 0x77, 0x10 }, { 0x5F, 0x5E, 0xC3 }, 3 },
 };
 static const uint32_t RVA_ROUT_TASK_VT = 0x15E01F4;
 
+static const int MAX_ORIG = 10;
 static void Patch(uint8_t* at, const void* bytes, size_t n) {
     DWORD old;
     VirtualProtect(at, n, PAGE_EXECUTE_READWRITE, &old);
@@ -182,7 +195,8 @@ static uint32_t CallThis(uint32_t rva, uint32_t self, int n, uint32_t a1 = 0, ui
 
 static long C(int i) { long c[32] = {}; g_counters(c); return c[i]; }
 enum { C_PROBE = 0, C_FIXON, C_INSTALLED, C_TRANS, C_TRANS_LOGGED, C_UNITS, C_PIKE, C_PIKE_KILL, C_KNOCK, C_KNOCK_KILL,
-       C_KILL_ROWS, C_ROUT_KILLS, C_PIKE_HIGH, C_MORALE, C_REARMED, C_MISSING, C_TICKS, C_TASK_ROWS, C_FIX_ROWS };
+       C_KILL_ROWS, C_ROUT_KILLS, C_PIKE_HIGH, C_MORALE, C_REARMED, C_MISSING, C_TICKS, C_TASK_ROWS, C_FIX_ROWS,
+       C_SETUP_ROWS };
 
 // The rout interrupt context of a unit (unit +0xE78; its unit at +0x10) with the unit's group list
 // (+0xB8C count, +0xB90 array) holding its group; the group marked "rout set up" (+0x2781).
@@ -352,7 +366,24 @@ static void RunProbe(HMODULE proxy) {
     CallThis(kSites[S_REFORM].rva, Addr(Zalloc(0x60)), 3, Addr(b.g), Addr(b.g), Addr(params));
     CallThis(kSites[S_INTERCEPT].rva, Addr(Zalloc(0x60)), 3, Addr(b.g), Addr(b.g), Addr(params));
     CallThis(kSites[S_ATTACK].rva, Addr(Zalloc(0x60)), 3, Addr(b.g), Addr(b.g), Addr(params));
-    CHECK(C(C_TASK_ROWS) == 3, "C2 re-form, intercept and attack tasks for a routing unit logged");
+    CallThis(kSites[S_YARI].rva, Addr(Zalloc(0x60)), 3, Addr(b.g), Addr(b.g), Addr(params));
+    CHECK(C(C_TASK_ROWS) == 4, "C2 re-form, intercept, attack and yari wall attack tasks for a routing unit logged");
+    // the rout set-up (wrapped: the game's store ran) and a stack pop of the routing unit's group
+    b.g[0x2781] = 0;
+    CallThis(kSites[S_SETUP].rva, Addr(b.g), 0);
+    CHECK(b.g[0x2781] == 1 && C(C_SETUP_ROWS) == 2, "S1 rout set-up wrapped: the game's code ran, before and after logged");
+    CallThis(kSites[S_CLEAR].rva, Addr(b.g + 0x20), 1, 0);
+    CHECK(C(C_SETUP_ROWS) == 3, "S2 stack pop of a routing unit's group logged");
+    CallThis(kSites[S_STOP].rva, Addr(b.g), 0);
+    CallThis(kSites[S_POST].rva, Addr(b.g), 1, Addr(params));
+    CHECK(C(C_SETUP_ROWS) == 5, "S3 group stop and attack command post of a routing unit logged");
+    uint32_t* blist = (uint32_t*)Zalloc(4);
+    blist[0] = Addr(b.g);
+    Put32(b.u, 0xB8C, 1);
+    Put32(b.u, 0xB90, Addr(blist));
+    CallThis(kSites[S_STOPALL].rva, Addr(b.u + 0xB80), 0);
+    CHECK(C(C_SETUP_ROWS) == 6, "S4 stop of every group of a routing unit logged per group");
+    b.g[0x2781] = 0;
     Put32(b.u, 0xCEC, 0);
     // the fix (on by default) with its row
     Fake z = MakeUnit(60.0f, 60.0f, "READY_STATE");
@@ -397,7 +428,8 @@ static void RunProbe(HMODULE proxy) {
     CHECK(Lines(dir, "zombie_pos.csv") >= 3, "F16 zombie_pos.csv: both units' groups");
     CHECK(Lines(dir, "zombie_men.csv") >= 3, "F17 zombie_men.csv: men sampled");
     CHECK(Lines(dir, "zombie_raw.csv") >= 1 + 2 * 4, "F18 zombie_raw.csv: unit, group and two men of each unit");
-    CHECK(Lines(dir, "zombie_tasks.csv") == 4, "F19 zombie_tasks.csv: header + 3 tasks");
+    CHECK(Lines(dir, "zombie_tasks.csv") == 5, "F19 zombie_tasks.csv: header + 4 tasks");
+    CHECK(Lines(dir, "zombie_setup.csv") == 7, "F22 zombie_setup.csv: header + set-up in / out, pop, stop, post, stop all");
     CHECK(Field(dir, "zombie_tasks.csv", 2, "intercept", 8, v, sizeof(v)) && strcmp(v, "2") == 0, "F20 ... rout state 2");
     Hex32(Addr(z.g), key);
     CHECK(Field(dir, "zombie_fix.csv", 2, "rearm", 4, v, sizeof(v)) && strcmp(v, key) == 0, "F21 zombie_fix.csv: the re-armed group");
@@ -458,7 +490,7 @@ int main(int argc, char** argv) {
         uint8_t b = 0x90;
         Patch(g_base + kSites[S_PIKE].rva + 1, &b, 1);
     }
-    static uint8_t before[SITES][8];
+    static uint8_t before[SITES][10];
     for (int s = 0; s < SITES; s++) memcpy(before[s], g_base + kSites[s].rva, kSites[s].origLen);
     MakeClock();
     HMODULE proxy = LoadLibraryA(argv[2]);

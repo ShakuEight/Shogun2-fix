@@ -48,6 +48,11 @@ count goes up after it broke".
   `dinput8.dll` (SHA-256 DE6AB403..., copy `dinput8.dll.zombiefix_only`); the all-fixes session
   build the user had put back as `dinput8.dll` was set aside as `dinput8.dll.zombiefix_allfixes`.
 
+- Follow-up (user question "why only yari wall"): probe hooks on the rout set-up, stack pop, group
+  stop, stop of every group, attack command post and the yari attack task constructor; runs
+  113320, 113814, 114406 (in sync, fix off, dev build swapped in and the user's DLL put back after
+  each): exact sequence in ARCHITECTURE.md point 5; the yari link is open (point 6).
+
 Pitfalls met:
 - A replay recorded with dev fixes on must be replayed with them on: the user may not know which
   fixes were loaded; the game folder `pathfix_log.txt` of the recording tells (it is rewritten at

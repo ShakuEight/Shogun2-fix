@@ -49,6 +49,10 @@
 //   zombie_tasks.csv   every re-form / intercept / melee attack task built for a routing unit's
 //                      group, with the constructor's caller
 //   zombie_fix.csv     every group the fix re-armed (or, fix off, found without its rout task)
+//   zombie_setup.csv   every group rout set-up (FUN_101a9bf0, stack before and after) and every
+//                      behaviour stack pop of a routing unit's group (FUN_1019e480, lock byte, caller),
+//                      every group stop of a routing unit (FUN_101604a0, and FUN_101605f0 for all its groups)
+//                      and attack command post (FUN_103daa80), with the game's yari wall test
 
 #include "log.h"
 #include "hook.h"
@@ -66,8 +70,9 @@ static uint32_t g_base = 0;
 // ---------------------------------------------------------------------------
 // Hooks (stolen bytes: docs/re/prologues_fbrfix_mid.txt for the transition site,
 // docs/re/prologues_zombiefix.txt for the kill functions, prologues_zombiefix_tasks.txt for the task constructors,
-// docs/re/prologues_zombiefix_fix.txt for the rout tick; whole instructions, no branch into the
-// range)
+// docs/re/prologues_zombiefix_fix.txt for the rout tick, prologues_zombiefix_rout.txt for the rout
+// set-up, the stack pop and the yari wall attack task, prologues_zombiefix_stop.txt for the group stop
+// and the attack command post; whole instructions, no branch into the range)
 // ---------------------------------------------------------------------------
 
 enum {
@@ -78,6 +83,12 @@ enum {
     H_TASK_INTERCEPT,  // FUN_101283f0 entry: direct intercept squad task constructor
     H_TASK_ATTACK,     // FUN_101273f0 entry: melee attack squad task constructor
     H_ROUT_TICK,       // FUN_101bd3b0 entry: tick of the rout interrupt state (ECX = interrupt context); the fix
+    H_SETUP,           // FUN_101a9bf0 entry: a group's rout set-up (ECX = group); wrapped (probe)
+    H_CLEAR,           // FUN_1019e480 entry: behaviour stack pop down to arg 1 entries (ECX = owner) (probe)
+    H_TASK_YARI,       // FUN_101ceb40 entry: the yari wall attack task 0x115C82B4 constructor (probe)
+    H_STOP,            // FUN_101604a0 entry: group stop: current action cancelled, stack cleared (ECX = group) (probe)
+    H_POST,            // FUN_103daa80 entry: group attack command posted into its action slot (ECX = group) (probe)
+    H_STOPALL,         // FUN_101605f0 entry: every group of a unit stopped (ECX = unit +0xB80) (probe)
     HOOK_COUNT
 };
 
@@ -96,6 +107,21 @@ static const HookDef g_hookDefs[HOOK_COUNT] = {
       { 0x56, 0x57, 0xFF, 0x74, 0x24, 0x10 }, -1, true },
     { "FUN_101bd3b0", "rout interrupt state tick (the fix)", 0x1BD3B0, 7,
       { 0x56, 0x57, 0x8B, 0xF9, 0x8B, 0x47, 0x10 }, -1, false },           // PUSH ESI; PUSH EDI; MOV EDI,ECX; MOV EAX,[EDI+0x10]
+    // docs/re/prologues_zombiefix_rout.txt
+    { "FUN_101a9bf0", "group rout set-up", 0x1A9BF0, 5,
+      { 0x51, 0x56, 0x8B, 0xF1, 0x57 }, -1, true },                        // PUSH ECX; PUSH ESI; MOV ESI,ECX; PUSH EDI
+    { "FUN_1019e480", "behaviour stack pop", 0x19E480, 10,
+      { 0x56, 0x8B, 0xF1, 0x80, 0xBE, 0x50, 0x04, 0x00, 0x00, 0x00 }, -1, true },   // PUSH ESI; MOV ESI,ECX; CMP byte [ESI+0x450],0
+    { "FUN_101ceb40", "yari wall attack task constructor", 0x1CEB40, 6,
+      { 0x56, 0x57, 0xFF, 0x74, 0x24, 0x10 }, -1, true },                  // PUSH ESI; PUSH EDI; PUSH [ESP+0x10]
+    // docs/re/prologues_zombiefix_stop.txt
+    { "FUN_101604a0", "group stop", 0x1604A0, 10,
+      { 0x56, 0x8B, 0xF1, 0x80, 0xBE, 0x08, 0x05, 0x00, 0x00, 0x01 }, -1, true },   // PUSH ESI; MOV ESI,ECX; CMP byte [ESI+0x508],1
+    { "FUN_103daa80", "group attack command post", 0x3DAA80, 6,
+      { 0x56, 0x8B, 0xF1, 0x8B, 0x46, 0x04 }, -1, true },                  // PUSH ESI; MOV ESI,ECX; MOV EAX,[ESI+4]
+    // docs/re/prologues_zombiefix_stop2.txt
+    { "FUN_101605f0", "stop every group of a unit", 0x1605F0, 7,
+      { 0x56, 0x57, 0x8B, 0xF9, 0x8B, 0x77, 0x10 }, -1, true },           // PUSH ESI; PUSH EDI; MOV EDI,ECX; MOV ESI,[EDI+0x10]
 };
 
 static HookSlot g_slots[HOOK_COUNT] = {};
@@ -110,6 +136,7 @@ static const uint32_t TASK_CTX_OFF = 0x18, TASK_OFF_UNIT = 0x04;             // 
 static const uint32_t GRP_OFF_COUNT = 0x18, GRP_OFF_MEN = 0x1C;              // group: men
 static const uint32_t GRP_OFF_OWNER = 0x20;                                  // group: behaviour stack owner
 static const uint32_t OWN_OFF_STACK = 0x400, OWN_OFF_COUNT = 0x440, OWN_OFF_CUR = 0x454;
+static const uint32_t OWN_OFF_UNLOCKED = 0x450;                              // stack: 1 = no pop running (FUN_1019e480)
 static const uint32_t SOL_OFF_GROUP = 0x3B4, SOL_OFF_UNIT = 0x214, SOL_OFF_POS = 0x48;
 static const uint32_t U_OFF_MORALE = 0xCC4, U_OFF_LEVEL = 0xCE8, U_OFF_ROUT = 0xCEC, U_OFF_RALLY = 0xD10;
 static const uint32_t U_OFF_GA_N = 0xB8C, U_OFF_GA = 0xB90, U_OFF_GB_N = 0xB70, U_OFF_GB = 0xB74, U_OFF_MAIN = 0xB9C;
@@ -232,12 +259,13 @@ static FILE* g_fRaw = nullptr;
 static FILE* g_fKills = nullptr;
 static FILE* g_fTasks = nullptr;
 static FILE* g_fFix = nullptr;
+static FILE* g_fSetup = nullptr;
 static LARGE_INTEGER g_qpf = {};
 static volatile LONG g_rows = 0, g_rawRows = 0;
 static const LONG MAX_ROWS = 6000000, MAX_RAW_ROWS = 60000;
 static volatile LONG g_cTrans = 0, g_cTransLogged = 0, g_cMorale = 0, g_cGroups = 0, g_cPos = 0, g_cMen = 0, g_cRaw = 0;
 static volatile LONG g_cPike = 0, g_cPikeKill = 0, g_cPikeHigh = 0, g_cKnock = 0, g_cKnockKill = 0, g_cKillRows = 0;
-static volatile LONG g_cRoutKills = 0, g_cTaskRows = 0, g_cFixRows = 0;
+static volatile LONG g_cRoutKills = 0, g_cTaskRows = 0, g_cFixRows = 0, g_cSetupRows = 0;
 static DWORD g_lastFlush = 0;
 
 static uint32_t Ms() {
@@ -282,7 +310,9 @@ static bool OpenProbe() {
                        "def_level,def_rout,outcome_in,outcome,who,ax,az,dx,dz\n");
     g_fTasks = OpenCsv("zombie_tasks.csv", "ms,tick,kind,ret_rva,task,group,unit,level,rout,routed,stack\n");
     g_fFix = OpenCsv("zombie_fix.csv", "ms,tick,action,unit,group,men,level,rout,stack\n");
-    if (!g_fStates || !g_fMorale || !g_fGroups || !g_fPos || !g_fMen || !g_fRaw || !g_fKills || !g_fTasks || !g_fFix) {
+    g_fSetup = OpenCsv("zombie_setup.csv", "ms,tick,thread,event,ret_rva,unit,group,unlocked,count,keep,yari,stack\n");
+    if (!g_fStates || !g_fMorale || !g_fGroups || !g_fPos || !g_fMen || !g_fRaw || !g_fKills || !g_fTasks || !g_fFix ||
+        !g_fSetup) {
         Log("zombiefix: cannot open the probe files in %s", g_dir);
         return false;
     }
@@ -291,7 +321,7 @@ static bool OpenProbe() {
 }
 
 static void FlushAll() {
-    FILE* fs[] = { g_fStates, g_fMorale, g_fGroups, g_fPos, g_fMen, g_fRaw, g_fKills, g_fTasks, g_fFix };
+    FILE* fs[] = { g_fStates, g_fMorale, g_fGroups, g_fPos, g_fMen, g_fRaw, g_fKills, g_fTasks, g_fFix, g_fSetup };
     for (FILE* f : fs) if (f) fflush(f);
 }
 
@@ -575,6 +605,93 @@ static void HandleTaskCtor(const uint8_t* ctx, const char* kind) {
 }
 
 // ---------------------------------------------------------------------------
+// The rout set-up and the stack pops of a routing unit's groups (probe): who empties the stack
+// ---------------------------------------------------------------------------
+
+// Yari wall active for the group's unit: the game's own test (the unit's ability set at +0xED4 of
+// [group +0x510], vtable slot +4, ability 6), as FUN_103d0470 asks it. Game thread only; -1 when
+// the objects do not look right (harness).
+typedef uint32_t (__fastcall* AbilityFn)(uint32_t self, uint32_t edx, uint32_t id);
+
+static int YariOn(uint32_t g) {
+    uint32_t owner = Rd(g + 0x510);
+    if (!PtrPlausible(owner)) return -1;
+    uint32_t set = owner + 0xED4, fn = Rd(Rd(set) + 4);
+    if (!Rva(fn)) return -1;
+    return (int)(((AbilityFn)fn)(set, 0, 6) & 0xFF);
+}
+
+static void SetupRow(const char* ev, uint32_t ret, uint32_t u, uint32_t g, uint32_t keep, int yari = -2) {
+    if (!RowBudget()) return;
+    char stack[384];
+    DescStack(g, stack, sizeof(stack));
+    uint32_t owner = g + GRP_OFF_OWNER;
+    InterlockedIncrement(&g_cSetupRows);
+    EnterCriticalSection(&g_cs);
+    if (g_fSetup)
+        fprintf(g_fSetup, "%u,%u,%lu,%s,%X,%X,%X,%u,%u,%u,%d,%s\n", Ms(), Tick(), GetCurrentThreadId(), ev, Rva(ret), u, g,
+                RdB(owner + OWN_OFF_UNLOCKED), Rd(owner + OWN_OFF_COUNT), keep, yari, stack);
+    MaybeFlush();
+    LeaveCriticalSection(&g_cs);
+}
+
+// FUN_101a9bf0 wrapped (ECX = group, no stack arguments, plain RET): the stack before and after.
+typedef void (__fastcall* SetupFn)(uint32_t self, uint32_t edx);
+
+static uint32_t HandleSetup(const uint8_t* ctx) {
+    if (!g_probe) return HOOK_CONTINUE;
+    uint32_t g = R32(ctx + ZOMBIE_OFF_ECX), ret = R32(ctx + ZOMBIE_OFF_RET), u = UnitOfGroup(g);
+    SetupRow("setup_in", ret, u, g, 0, YariOn(g));
+    ((SetupFn)g_zombieTrampolines[H_SETUP])(g, 0);
+    SetupRow("setup_out", ret, u, g, 0, YariOn(g));
+    return HOOK_RETURN(0);
+}
+
+// FUN_1019e480 (ECX = stack owner = group +0x20, arg 1 = entries to keep): only for routing units.
+static void HandleClear(const uint8_t* ctx) {
+    if (!g_probe) return;
+    uint32_t g = R32(ctx + ZOMBIE_OFF_ECX) - GRP_OFF_OWNER;
+    if (!IsGroup(g)) return;
+    uint32_t u = UnitOfGroup(g), rout = RoutOf(u);
+    if (rout == 0 || rout == 0xFFFFFFFFu) return;
+    SetupRow("pop", R32(ctx + ZOMBIE_OFF_RET), u, g, R32(ctx + ZOMBIE_OFF_ARG1));
+}
+
+// FUN_101604a0 (ECX = group): only for routing units. FUN_103daa80 (ECX = group): every post,
+// "post" for a routing unit, "post_ok" otherwise.
+static void HandleStop(const uint8_t* ctx) {
+    if (!g_probe) return;
+    uint32_t g = R32(ctx + ZOMBIE_OFF_ECX);
+    if (!IsGroup(g)) return;
+    uint32_t u = UnitOfGroup(g), rout = RoutOf(u);
+    if (rout == 0 || rout == 0xFFFFFFFFu) return;
+    SetupRow("stop", R32(ctx + ZOMBIE_OFF_RET), u, g, RdB(g + 0x508));
+}
+
+static void HandlePost(const uint8_t* ctx) {
+    if (!g_probe) return;
+    uint32_t g = R32(ctx + ZOMBIE_OFF_ECX);
+    if (!IsGroup(g)) return;
+    uint32_t u = UnitOfGroup(g), rout = RoutOf(u);
+    SetupRow(rout != 0 && rout != 0xFFFFFFFFu ? "post" : "post_ok", R32(ctx + ZOMBIE_OFF_RET), u, g, RdB(g + 0x508),
+             YariOn(g));
+}
+
+// FUN_101605f0 (ECX = unit +0xB80, its group list): only for routing units; one row per group.
+static void HandleStopAll(const uint8_t* ctx) {
+    if (!g_probe) return;
+    uint32_t u = R32(ctx + ZOMBIE_OFF_ECX) - (U_OFF_GA - 0x10);
+    if (!IsBattleUnit(u)) return;
+    uint32_t rout = RoutOf(u);
+    if (rout == 0 || rout == 0xFFFFFFFFu) return;
+    uint32_t n = Rd(u + U_OFF_GA_N), arr = Rd(u + U_OFF_GA);
+    for (uint32_t i = 0; i < n && i < 16 && PtrPlausible(arr); i++) {
+        uint32_t g = Rd(arr + 4 * i);
+        if (IsGroup(g)) SetupRow("stopall", R32(ctx + ZOMBIE_OFF_RET), u, g, RdB(g + 0x508), YariOn(g));
+    }
+}
+
+// ---------------------------------------------------------------------------
 // The fix: the rout interrupt state's tick (FUN_101bd3b0) sets up every group of the unit whose
 // byte +0x2781 is still 0 (FUN_101a9bf0: byte = 1, the group's behaviour stack cleared, the rout
 // task pushed) and never looks at the group again. A task pushed onto the group afterwards (an
@@ -820,6 +937,12 @@ extern "C" void __stdcall ZombieHandler3(const uint8_t* ctx) { HandleTaskCtor(ct
 extern "C" void __stdcall ZombieHandler4(const uint8_t* ctx) { HandleTaskCtor(ctx, "intercept"); }
 extern "C" void __stdcall ZombieHandler5(const uint8_t* ctx) { HandleTaskCtor(ctx, "attack"); }
 extern "C" void __stdcall ZombieHandler6(const uint8_t* ctx) { HandleRoutTick(ctx); }
+extern "C" uint32_t __stdcall ZombieHandler7(const uint8_t* ctx) { return HandleSetup(ctx); }
+extern "C" void __stdcall ZombieHandler8(const uint8_t* ctx) { HandleClear(ctx); }
+extern "C" void __stdcall ZombieHandler9(const uint8_t* ctx) { HandleTaskCtor(ctx, "yari_attack"); }
+extern "C" void __stdcall ZombieHandler10(const uint8_t* ctx) { HandleStop(ctx); }
+extern "C" void __stdcall ZombieHandler11(const uint8_t* ctx) { HandlePost(ctx); }
+extern "C" void __stdcall ZombieHandler12(const uint8_t* ctx) { HandleStopAll(ctx); }
 
 HOOK_DETOUR(ZombieDetour0, ZombieHandler0, g_zombieTrampolines, 0)
 HOOK_DETOUR_RET(ZombieDetour1, ZombieHandler1, g_zombieTrampolines, 1, 0xC)    // FUN_10435410: __thiscall, 3 stack args
@@ -828,9 +951,17 @@ HOOK_DETOUR(ZombieDetour3, ZombieHandler3, g_zombieTrampolines, 3)
 HOOK_DETOUR(ZombieDetour4, ZombieHandler4, g_zombieTrampolines, 4)
 HOOK_DETOUR(ZombieDetour5, ZombieHandler5, g_zombieTrampolines, 5)
 HOOK_DETOUR(ZombieDetour6, ZombieHandler6, g_zombieTrampolines, 6)
+HOOK_DETOUR_RET(ZombieDetour7, ZombieHandler7, g_zombieTrampolines, 7, 0)    // FUN_101a9bf0: __thiscall, no stack args
+HOOK_DETOUR(ZombieDetour8, ZombieHandler8, g_zombieTrampolines, 8)
+HOOK_DETOUR(ZombieDetour9, ZombieHandler9, g_zombieTrampolines, 9)
+HOOK_DETOUR(ZombieDetour10, ZombieHandler10, g_zombieTrampolines, 10)
+HOOK_DETOUR(ZombieDetour11, ZombieHandler11, g_zombieTrampolines, 11)
+HOOK_DETOUR(ZombieDetour12, ZombieHandler12, g_zombieTrampolines, 12)
 
 static const HookDetour g_detours[HOOK_COUNT] = { ZombieDetour0, ZombieDetour1, ZombieDetour2, ZombieDetour3,
-                                                  ZombieDetour4, ZombieDetour5, ZombieDetour6 };
+                                                  ZombieDetour4, ZombieDetour5, ZombieDetour6, ZombieDetour7,
+                                                  ZombieDetour8, ZombieDetour9, ZombieDetour10, ZombieDetour11,
+                                                  ZombieDetour12 };
 
 // Harness only (fixes/zombie-yari-wall-fix/tests): fix and probe counters.
 extern "C" __declspec(dllexport) void __stdcall ZombieFixTestCounters(long* out) {
@@ -853,6 +984,7 @@ extern "C" __declspec(dllexport) void __stdcall ZombieFixTestCounters(long* out)
     out[16] = g_fTicks;
     out[17] = g_cTaskRows;
     out[18] = g_cFixRows;
+    out[19] = g_cSetupRows;
 }
 
 // ---------------------------------------------------------------------------
@@ -934,7 +1066,8 @@ void ZombieFix_Remove() {
     }
     if (g_probe) {
         EnterCriticalSection(&g_cs);
-        FILE** fs[] = { &g_fStates, &g_fMorale, &g_fGroups, &g_fPos, &g_fMen, &g_fRaw, &g_fKills, &g_fTasks, &g_fFix };
+        FILE** fs[] = { &g_fStates, &g_fMorale, &g_fGroups, &g_fPos, &g_fMen, &g_fRaw, &g_fKills, &g_fTasks, &g_fFix,
+                        &g_fSetup };
         for (FILE** f : fs) if (*f) { fclose(*f); *f = nullptr; }
         g_probe = false;
         LeaveCriticalSection(&g_cs);

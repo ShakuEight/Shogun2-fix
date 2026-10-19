@@ -72,15 +72,27 @@ Melee interrupt -> rout interrupt; the next tick the group's stack is emptied an
 
 ## The zombie (probe, replay in sync with the recording)
 
-Units that broke while still under a charge order (stack: intercept task 0x115C82B4 with a direct
-intercept 0x115C0A48): in the same tick as the rout transition a melee attack task 0x115C0DFC
-starts on the group (START -> INTERCEPT) and its direct intercept finishes at once. The rout task
-is not on the stack afterwards; three ticks later the group's default re-form task 0x115C0644
-runs (REFORM, then the halt task 0x115E012C: HALT -> REFORM -> ADOPT_STANCES, then IDLE ->
+Units that broke while running the yari wall attack task 0x115C82B4. Break tick: `FUN_10154180`
+stops every group of the unit (all routers); for the zombies the unit's attack order (unit-level
+task, vtable 0x115BF200, update `FUN_101b9290`) then starts afresh in the same tick and posts a group
+attack command (`FUN_103daa80`), which builds a melee attack task 0x115C0DFC. Next tick the rout
+set-up pushes the rout task, and right after it `FUN_10154180` stops every group again (zombies
+only), deleting it. Two ticks later the group update (`FUN_101b6490`, "SQUAD::update") finds the
+stack empty and pushes the group's default re-form task 0x115C0644, which (REFORM, then the halt task 0x115E012C: HALT -> REFORM -> ADOPT_STANCES, then IDLE ->
 READY). Byte +0x2781 stays 1, so the rout tick never sets the group up again. The unit stays
 broken (level 6, rout state 2), its men stand in their yari wall stance, and its kill count keeps
 rising: 34 and 40 kills after breaking for the two units the user saw, 19 for a third that was
 wiped out standing. Later some of these groups also get direct intercept tasks.
+
+Two other yari units also broke under 0x115C82B4 and ran normally; why the attack order restarts
+in the break tick for some units only is open.
+
+Group methods used above: `FUN_101604a0` stops a group (cancels its current action at +0x488 /
+flag +0x508, clears the stack); `FUN_101605f0` (ECX = unit +0xB80) stops every group of the unit;
+`FUN_103daa80` posts an attack command into the group's action slot (+0x480, vtable 0x115E07E8,
+start `FUN_103d0470`: yari wall active -> task 0x115C82B4 `FUN_101ceb40`, else melee attack); the
+behaviour stack's allocator `FUN_10139e50` pushes without checks, its pop `FUN_1019e480` is skipped
+while another pop of the same stack runs (byte owner +0x450).
 
 The squad task constructors seen: re-form 0x115C0644 `FUN_101283a0`, direct intercept 0x115C0A48
 `FUN_101283f0`, melee attack 0x115C0DFC `FUN_101273f0` (thiscall: task, group, owner, params).

@@ -39,13 +39,28 @@ when the battle is decided (about 120 s); the replay does not continue after tha
    the rout tick sets when it sets a group up, stays 1, so the rout tick never sets it up again.
    The task log of the fix-off run has the attack task at the rout tick for exactly the four
    units whose kill count rose most after breaking.
-5. **Why yari wall**: a standing unit in its yari wall stance kills by contact. The pike outcome
-   (`FUN_10435410`) and the collision knockdown (`FUN_10430cf0`, a soldier pushed into a man
-   facing him) need no attack order, and a broken unit (level 6) keeps its melee values (only
-   level 7 or rout state 3 zero them). The stuck group itself is not specific to spears; any unit
-   that breaks in the middle of a charge can get it, but other units standing idle hardly kill.
-   Multiplayer makes it likelier: orders reach the units later, so more of them arrive around
-   the moment a unit breaks.
+5. **The exact sequence** (probe hooks on the rout set-up `FUN_101a9bf0`, the stack pop
+   `FUN_1019e480`, the group stop `FUN_101604a0`, the stop of every group `FUN_101605f0` and the
+   attack command post `FUN_103daa80`; run 20261019_114406, in sync):
+   - break tick: `FUN_10154180` stops every group of the unit (all routing units get this);
+   - same tick, zombies only: the unit's attack order (unit-level task, vtable 0x115BF200, update
+     `FUN_101b9290`) starts a fresh instance and posts a group attack command; the command builds
+     a melee attack task;
+   - next tick: the rout set-up clears that task and pushes the rout task (correctly);
+   - right after, zombies only: `FUN_10154180` stops every group of the unit again, which deletes
+     the rout task; two ticks later the group update (`FUN_101b6490`) finds the stack empty and
+     pushes the default re-form task.
+6. **Why yari wall (open)**: all four zombies were running the yari-wall-only attack task
+   0x115C82B4 when they broke (the attack command executor `FUN_103d0470` pushes it only for a
+   unit with yari wall active; other units get the melee attack task 0x115C0DFC). Two other yari
+   units also broke under that task and ran normally, so it is necessary in this data but not
+   sufficient. Not the cause: the interrupt state at the break (two zombies broke from the melee
+   interrupt), the number of attack command posts (enemy units post as often). Only yari units
+   broke in this replay, so the replay cannot show whether other units ever get it. Why a stuck
+   unit is deadly with yari wall: a standing unit in its yari wall stance kills by contact (pike
+   outcome `FUN_10435410`, collision knockdown `FUN_10430cf0`) without an order, and a broken unit
+   (level 6) keeps its melee values. The fix acts on the result (a routing group without its rout
+   task), so it covers the same failure in any unit.
 
 ## The fix
 
