@@ -26,7 +26,8 @@
 // into its yari wall stance and keeps killing what touches it (replay zombie_yariwall: two units,
 // 34 and 40 kills after they broke).
 //
-// The fix (on from launch; ZOMBIEFIX_OFF=1 starts off, I toggles): an entry hook on the rout tick
+// The fix (on from launch; ZOMBIEFIX_OFF=1 starts off, I toggles; a build with the CMake option
+// ZOMBIEFIX_START_OFF starts off unless ZOMBIEFIX_ON=1): an entry hook on the rout tick
 // clears byte +0x2781 of every live group of the unit that is marked set up but has no rout task
 // on its stack, so the game's own tick sets the group up again in the same call (its own rout
 // task, its own move). Nothing else is changed; a unit that rallies leaves the rout state first.
@@ -887,7 +888,13 @@ void ZombieFix_Install() {
     static const ToneSeg off[] = { { 330, 300 } };
     g_toneOn = Tone_Make(on, 1);
     g_toneOff = Tone_Make(off, 1);
+#ifdef ZOMBIEFIX_START_OFF
+    bool fixOff = !EnvIs("ZOMBIEFIX_ON", '1');      // live-check build: off at launch, I turns it on
+    const char* offWhy = "OFF at launch (build option ZOMBIEFIX_START_OFF)";
+#else
     bool fixOff = EnvIs("ZOMBIEFIX_OFF", '1');
+    const char* offWhy = "OFF (ZOMBIEFIX_OFF=1)";
+#endif
     if (EnvIs("ZOMBIEFIX_PROBE", '1')) {
         g_ctx = (CtxRec*)VirtualAlloc(nullptr, sizeof(CtxRec) * CTX_TABLE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (g_ctx && OpenProbe()) g_probe = true;
@@ -908,7 +915,7 @@ void ZombieFix_Install() {
         if (g_slots[h].active)
             Log("zombiefix: hook %s (%s) installed at RVA 0x%06X", g_hookDefs[h].func, g_hookDefs[h].role, g_hookDefs[h].rva);
     Log("zombiefix: fix %s: a routing unit's group whose rout task was replaced is set up to rout again",
-        fixOff ? "OFF (ZOMBIEFIX_OFF=1)" : "ON");
+        fixOff ? offWhy : "ON");
     g_keyWatched = Keys_Watch('I', &g_testKeys, 1, ToggleKey);
     Log("zombiefix: I toggles the fix on / off%s", g_keyWatched ? "" : " (ERROR: key poll not started)");
 }

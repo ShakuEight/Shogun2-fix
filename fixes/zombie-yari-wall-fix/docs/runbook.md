@@ -36,6 +36,20 @@ with the fix on changes what the units do after they break, so the replay drifts
 recording; compare per unit. The battle ends when it is decided (about 120 s in this replay); the
 replay does not go on after that.
 
+## Live check build (only this fix, off at launch)
+
+```
+cmake -S . -B build_probe -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF ^
+  -DFIX_PATHFIX=OFF -DFIX_ARTILLERY_TARGETING=OFF -DFIX_FIRE_BY_RANK=OFF ^
+  -DFIX_SIEGE_RESPONSIVENESS=OFF -DFIX_WALL_MANNING=OFF -DFIX_ZOMBIE_YARI_WALL=ON -DZOMBIEFIX_START_OFF=ON
+cmake --build build_probe
+```
+
+From an x86 MSVC environment (`vcvarsall.bat x86`); `build_probe\` is git-ignored. The log
+(`<game>\pathfix_log.txt`) must say `Fixes compiled in: 1` and `fix OFF at launch`. I turns the fix
+on (high tone), I again off (low tone). The harness's off scenario passes on this DLL; its default
+scenario fails its launch and key checks by design (the fix starts off).
+
 ## Analysis (local, `analysis/`)
 
 ```

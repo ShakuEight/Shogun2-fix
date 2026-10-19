@@ -43,6 +43,11 @@ count goes up after it broke".
   build (all fixes + zombiefix, SHA-256 0711A050...) sits as `dinput8.dll.zombiefix`. Probe runs
   in `zombiefix_runs\` take 1.2 GB.
 
+- Live check (user request): CMake option `ZOMBIEFIX_START_OFF` (fix off at launch,
+  `ZOMBIEFIX_ON=1` overrides); single-fix build in `build_probe\` installed as the game folder's
+  `dinput8.dll` (SHA-256 DE6AB403..., copy `dinput8.dll.zombiefix_only`); the all-fixes session
+  build the user had put back as `dinput8.dll` was set aside as `dinput8.dll.zombiefix_allfixes`.
+
 Pitfalls met:
 - A replay recorded with dev fixes on must be replayed with them on: the user may not know which
   fixes were loaded; the game folder `pathfix_log.txt` of the recording tells (it is rewritten at

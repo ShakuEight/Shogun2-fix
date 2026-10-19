@@ -5,6 +5,11 @@ set(ZOMBIEFIX_DIR ${CMAKE_CURRENT_LIST_DIR})
 
 target_include_directories(dinput8 PRIVATE ${ZOMBIEFIX_DIR}/src)        # the generated stack-offset header
 target_compile_definitions(dinput8 PRIVATE FIX_ZOMBIE_YARI_WALL)        # registers ZombieFix_Install / _Remove (proxy/fixes.cpp)
+# Live-check builds: the fix starts off, I turns it on (ZOMBIEFIX_ON=1 starts it on).
+option(ZOMBIEFIX_START_OFF "zombie-yari-wall-fix starts off at launch (dev live-check build)" OFF)
+if(ZOMBIEFIX_START_OFF)
+    target_compile_definitions(dinput8 PRIVATE ZOMBIEFIX_START_OFF)
+endif()
 
 if(NOT PUBLIC_RELEASE)
     target_sources(dinput8 PRIVATE ${ZOMBIEFIX_DIR}/src/zombiefix.cpp)

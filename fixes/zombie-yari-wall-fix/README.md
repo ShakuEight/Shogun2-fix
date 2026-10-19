@@ -62,4 +62,8 @@ The battle ends when it is decided (about 120 s).
 | `ZOMBIEFIX_OFF=1` | start with the fix off; I toggles it (with the game focused) |
 | `ZOMBIEFIX_PROBE=1` | research probe: `<game>\zombiefix_runs\<stamp>\` |
 
+Live check build (only this fix, off at launch, I on with the high tone, I again off with the low
+tone): CMake `-DZOMBIEFIX_START_OFF=ON` with the other `FIX_*` options OFF; in such a build
+`ZOMBIEFIX_ON=1` starts it on instead.
+
 Build, tests and replay runs: `docs/runbook.md`.
