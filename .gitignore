@@ -48,3 +48,6 @@ __pycache__/
 /docs/re/*.csv
 # full originals of documents whose quoted game code was redacted for the public repository
 /private/
+
+# probe-only build tree (one fix compiled in, for replay captures)
+/build_probe/

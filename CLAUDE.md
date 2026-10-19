@@ -11,6 +11,7 @@ Runtime fixes for Total War: Shogun 2 (the original 32-bit `Empire.Retail.dll`),
 | fire-by-rank-fix (code name fbrfix): matchlock target acquisition, fire by rank, Hattori / Ikko Ikki reload | `fixes/fire-by-rank-fix/` | dev build (2026-10-18: every rank, front rank first, 75 % quorum, early reload), no release |
 | siege-responsiveness-fix (code name siegefix): defending units answer move orders during wall assaults | `fixes/siege-responsiveness-fix/` | dev build (2026-10-18: queue's own node budget 2000, local player's path requests searched at once), no release |
 | wall-manning-fix (code name wallfix): units ordered onto a wall go straight to their wall positions (no staging march) | `fixes/wall-manning-fix/` | dev build (2026-10-18), no release |
+| zombie-yari-wall-fix (code name zombiefix): a unit that breaks mid-charge runs instead of standing in its yari wall and killing | `fixes/zombie-yari-wall-fix/` | dev build (2026-10-19), no release |
 
 Shared code for all fixes lives in `proxy/` since 2026-10-18: hook engine `hook.h`, guarded
 memory and battle tick `gamemem.h`, keys and tones `keys.h` (dev only). API in `fixes/README.md`.
@@ -123,6 +124,8 @@ xrefs (see `tools/anchor_hunt.py`).
 | `if (hw > obj+X) obj+X = hw` on a float, right after a 0.5 multiply | pattern | FUN_1041c5d0 path obj registration (max half-width) |
 | vtable with 12 entries where entry [2] serializes pos, uint16, float | pattern | move order serialization vtable |
 | "NAVAL_UNIT_RECORD" | string | FUN_10353dd0 naval path builder (exclude) |
+| "ROUT_INTERRUPT_STATE" state-name holder, getter `MOV EAX,[holder]; RET` in a 5-slot state vtable | string + pattern | rout interrupt state (x86 vtable 0x115B4D68, tick FUN_101bd3b0; docs/re/rout_x86.md) |
+| script condition strings "routing" / "wavering" / "rallying" in one compare chain | strings | FUN_101b3f60: morale fields of the battle unit (+0xCEC rout state, +0xCE8 level) |
 
 Struct offsets will NOT carry over: pointer size doubles, so any field after
 a pointer shifts (moveOrder+0x60 sits after four pointer arrays). Re-derive

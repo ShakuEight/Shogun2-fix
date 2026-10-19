@@ -8,7 +8,8 @@ addresses inside the stolen bytes are compared as stored on disk (image base
     python tools/check_prologues.py [path to empire.retail.dll]
 
 The list below holds every patch site of every fix compiled into the DLL (pathfix,
-artillery-targeting-fix, fire-by-rank-fix, siege-responsiveness-fix, wall-manning-fix): entry and mid-function
+artillery-targeting-fix, fire-by-rank-fix, siege-responsiveness-fix, wall-manning-fix,
+zombie-yari-wall-fix): entry and mid-function
 hooks, functions a fix calls directly, and [imm32 patch] instructions whose immediate a fix
 rewrites. After the byte check the script fails when two sites share a byte, because
 the fixes must never patch the same code.
@@ -75,6 +76,17 @@ HOOKS = [
     ("FUN_103e1780", 0x3E1780, "83 EC 08 56 57"),
     ("FUN_10386d90", 0x386D90, "83 EC 20 53 8B 5C 24 30"),
     ("FUN_1016af90", 0x16AF90, "83 EC 18 57 8B F9"),   # the fix: staging test of the wall task
+    # zombie-yari-wall-fix (docs/re/prologues_zombiefix.txt): probe-only hooks first. The transition site
+    # is fire-by-rank-fix's probe site too (listed once above); the two probes are never on together
+    # (the second one finds a JMP there and refuses to install).
+    ("FUN_10435410", 0x435410, "64 A1 2C 00 00 00"),   # pike kill outcome
+    ("FUN_10430cf0", 0x430CF0, "81 EC 98 00 00 00"),   # knockdown kill outcome
+    # (docs/re/prologues_zombiefix_tasks.txt) probe-only: squad task constructors
+    ("FUN_101283a0", 0x1283A0, "56 57 FF 74 24 10"),   # re-form task
+    ("FUN_101283f0", 0x1283F0, "56 57 FF 74 24 10"),   # direct intercept task
+    ("FUN_101273f0", 0x1273F0, "56 57 FF 74 24 10"),   # melee attack task
+    # (docs/re/prologues_zombiefix_fix.txt) the fix: rout interrupt state tick
+    ("FUN_101bd3b0", 0x1BD3B0, "56 57 8B F9 8B 47 10"),
 ]
 
 

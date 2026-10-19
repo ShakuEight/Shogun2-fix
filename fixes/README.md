@@ -8,6 +8,8 @@ Each folder here is one game fix compiled into the same `dinput8.dll`:
 | `artillery-targeting-fix/` (artfix, was aimfix) | `ArtFix_Install`, `ArtFix_Remove` | `FIX_ARTILLERY_TARGETING` (dev build only so far) |
 | `fire-by-rank-fix/` (fbrfix) | `FbrFix_Install`, `FbrFix_Remove` | `FIX_FIRE_BY_RANK` (dev build only so far) |
 | `siege-responsiveness-fix/` (siegefix) | `SiegeFix_Install`, `SiegeFix_Remove` | `FIX_SIEGE_RESPONSIVENESS` (dev build only so far) |
+| `wall-manning-fix/` (wallfix) | `WallFix_Install`, `WallFix_Remove` | `FIX_WALL_MANNING` (dev build only so far) |
+| `zombie-yari-wall-fix/` (zombiefix) | `ZombieFix_Install`, `ZombieFix_Remove` | `FIX_ZOMBIE_YARI_WALL` (dev build only so far) |
 
 ## Adding a fix
 

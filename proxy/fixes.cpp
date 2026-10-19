@@ -23,6 +23,10 @@ void SiegeFix_Remove();
 void WallFix_Install();    // fixes/wall-manning-fix/src/wallfix.cpp
 void WallFix_Remove();
 #endif
+#ifdef FIX_ZOMBIE_YARI_WALL
+void ZombieFix_Install();  // fixes/zombie-yari-wall-fix/src/zombiefix.cpp
+void ZombieFix_Remove();
+#endif
 
 static const FixModule kFixes[] = {
 #ifdef FIX_PATHFIX
@@ -39,6 +43,9 @@ static const FixModule kFixes[] = {
 #endif
 #ifdef FIX_WALL_MANNING
     { "wall-manning-fix", WallFix_Install, WallFix_Remove },
+#endif
+#ifdef FIX_ZOMBIE_YARI_WALL
+    { "zombie-yari-wall-fix", ZombieFix_Install, ZombieFix_Remove },
 #endif
     { nullptr, nullptr, nullptr }
 };
