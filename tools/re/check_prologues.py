@@ -9,7 +9,7 @@ addresses inside the stolen bytes are compared as stored on disk (image base
 
 The list below holds every patch site of every fix compiled into the DLL (pathfix,
 artillery-targeting-fix, fire-by-rank-fix, siege-responsiveness-fix, wall-manning-fix,
-zombie-yari-wall-fix): entry and mid-function
+zombie-yari-wall-fix, wall-collapse-fix): entry and mid-function
 hooks, functions a fix calls directly, and [imm32 patch] instructions whose immediate a fix
 rewrites. After the byte check the script fails when two sites share a byte, because
 the fixes must never patch the same code.
@@ -98,6 +98,16 @@ HOOKS = [
     ("FUN_103daa80", 0x3DAA80, "56 8B F1 8B 46 04"),
     ("FUN_101605f0", 0x1605F0, "56 57 8B F9 8B 77 10"),   # (prologues_zombiefix_stop2.txt) stop every group
     ("FUN_10154180", 0x154180, "83 EC 34 56 8B F1"),      # (prologues_zombiefix_reform.txt) unit re-form
+    # wall-collapse-fix (docs/re/prologues_collapsefix.txt): probe-only hooks on the building piece
+    # functions, the phase setter and the soldier hit point setter
+    ("FUN_10477f40", 0x477F40, "83 EC 0C 56 57"),               # piece level apply
+    ("FUN_10477ff0", 0x477FF0, "8B 44 24 04 53"),               # piece damage set
+    ("FUN_10479ca0", 0x479CA0, "83 EC 14 55 8B E9"),            # piece collapse effects
+    ("FUN_1047b370", 0x47B370, "80 B9 F4 00 00 00 00"),         # piece damage added
+    ("FUN_10426940", 0x426940, "83 EC 10 56 57"),               # campaign fort damage
+    ("FUN_101acfb0", 0x1ACFB0, "8B 44 24 04 89 41 14"),         # battle phase set
+    ("FUN_103a3080", 0x3A3080, "8B 4C 24 04 8B 44 24 08"),      # soldier hit points set
+    ("FUN_1043c870", 0x43C870, "56 57 8B F9 8B B7 D0 01 00 00"),  # (prologues_collapsefix_fix.txt) the fix: battle start gate damage
 ]
 
 

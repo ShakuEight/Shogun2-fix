@@ -27,6 +27,10 @@ void WallFix_Remove();
 void ZombieFix_Install();  // fixes/zombie-yari-wall-fix/src/zombiefix.cpp
 void ZombieFix_Remove();
 #endif
+#ifdef FIX_WALL_COLLAPSE
+void CollapseFix_Install();  // fixes/wall-collapse-fix/src/collapsefix.cpp
+void CollapseFix_Remove();
+#endif
 
 static const FixModule kFixes[] = {
 #ifdef FIX_PATHFIX
@@ -46,6 +50,9 @@ static const FixModule kFixes[] = {
 #endif
 #ifdef FIX_ZOMBIE_YARI_WALL
     { "zombie-yari-wall-fix", ZombieFix_Install, ZombieFix_Remove },
+#endif
+#ifdef FIX_WALL_COLLAPSE
+    { "wall-collapse-fix", CollapseFix_Install, CollapseFix_Remove },
 #endif
     { nullptr, nullptr, nullptr }
 };
