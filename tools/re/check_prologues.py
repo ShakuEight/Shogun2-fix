@@ -37,6 +37,8 @@ HOOKS = [
     ("FUN_10367600", 0x367600, "55 8B EC 83 E4 F0"),   # v24 integrator entry (docs/prologues_v24.txt)
     ("FUN_103df3f0+0xE1", 0x3DF4D1, "80 7C 24 0F 01"),  # v34 replan request radius (in the dev and public DLL)
     ("FUN_103670a0", 0x3670A0, "83 EC 10 56 57"),       # v38 cursor advance (in the dev and public DLL)
+    ("FUN_1014e870", 0x14E870, "51 53 8A 5C 24 10"),    # v43 formation change handler (event, dev only; docs/re/prologues_v43.txt)
+    ("0x103c5d30", 0x3C5D30, "81 EC 84 00 00 00"),      # v43 yari wall slot generator (Y; no function in s2x86)
     # artillery-targeting-fix, was aimfix (docs/re/prologues_aimfix.txt): the fix hook, then the two probe-only hooks
     ("FUN_1047fd90", 0x47FD90, "53 56 8B F1 80 7E 7C 00"),
     ("FUN_103a6850", 0x3A6850, "83 EC 0C 56 8B F1"),

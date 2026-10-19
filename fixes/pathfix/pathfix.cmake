@@ -1,5 +1,5 @@
 # pathfix: included by the root CMakeLists.txt when FIX_PATHFIX is ON.
-# Dev build: src/pathfix.cpp (v42, I toggles the fix, P toggles a recording; PATHFIX_CAPTURE=1 capture mode) + the harness.
+# Dev build: src/pathfix.cpp (v43, I toggles the fix with its yari wall part, P toggles a recording; PATHFIX_CAPTURE=1 capture mode) + the harness.
 # Public DLL: release/pathfix_release.cpp (release 1.0: variant G always on, nothing else) + the version resource.
 set(PATHFIX_DIR ${CMAKE_CURRENT_LIST_DIR})
 

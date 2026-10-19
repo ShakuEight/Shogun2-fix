@@ -1,4 +1,4 @@
-# pathfix runbook (v42)
+# pathfix runbook (v43)
 
 ## Install
 
@@ -7,8 +7,33 @@
 3. Copy `build\dinput8.dll` into the game folder as `dinput8.dll`. Keep the previous one as a
    rollback (`<game>\dinput8.dll.vNN.bak`, or `fixes\pathfix\archive\installed_dlls\`).
 
-v42 is installed as of 2026-10-17. The v40 DLL it replaced is `<game>\dinput8.dll.v40.bak`;
-v41 is still in the game folder as `dinput8.dll.41`.
+As of 2026-10-19 the game folder's `dinput8.dll` is the dev build with every fix compiled in
+(pathfix v43 and the five other fixes, `build\dinput8.dll`, SHA-256 F339B42E...). The
+pathfix-only v43 build used for the replay runs is `<game>\dinput8.dll.pathfix43`; the older
+copies (`.artifix`, `.fbr`, `.manningfix`, `.wallfix`, `.zombie`) are untouched.
+
+## v43: yari wall
+
+v43 adds the yari wall part of G (Y): a unit in yari wall is laid along the path, like a block,
+wherever its straight wall would not fit (a node narrower than the wall, or a bend inside it);
+the wall itself forms as the game lays it at the destination. For a yari wall, G does not anchor
+the front 2 m before the path end when a narrow run reaches the end (the straight wall laid there
+early sent men up parallel passages). G's block depth for a yari wall comes from its own files
+(the player's drag sets them). It is part of the I toggle; nothing else to press. Comparison
+runs: `PATHFIX_YARI=0` keeps G exactly as v42 (all of Y off).
+
+For replays recorded with I presses: `PATHFIX_TOGGLE_TICKS=t1,t2,...` (ascending game ticks)
+flips the fix at each tick, as the I key would, so the replay plays with the same fix states.
+The ticks come from the recording's `pathfix_log.txt` (the minute summaries give the tick, the I
+lines the time). Each flip is logged as `PATHFIX_TOGGLE_TICKS: flip n of N at tick ...`.
+
+New capture columns: orders.csv `gtick, form_vt, form_f0..f3, form_x1c, yari, groups,
+req_width`; new `yari.csv` (one row per decided slot call: width, files, ranks, block span,
+narrowest node, sharpest turn, laid by the block generator or not); release.csv `depth_kind`;
+events.csv rows `FUN_1014e870` (formation change, ECX = the army unit). Analysis:
+`fixes/pathfix/analysis/yariwall_passes.py <run>` (local).
+
+FUN_10154180 is not hooked by pathfix (zombie-yari-wall-fix's probe site).
 
 ## Play
 

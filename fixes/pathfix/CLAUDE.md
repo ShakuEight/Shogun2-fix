@@ -936,3 +936,53 @@ entry, docs say 1.0. release.bat: all tests passed (full 134 x2, geo 32, play 18
 release/_previous/Shogun2-PathFix-1.0_20261017_161445, the 1.0.1 package to
 release/_previous/Shogun2-PathFix-1.0.1_unpublished. Tag v1.0.1 removed; tag v1.0 and the
 GitHub release carry the zip.
+
+v43, 2026-10-19 (user report: yari wall units path badly through a gatehouse and round a sharp
+corner with G on; "off seems worse, with fix on it is a bit better, but still bad"; replay
+`yariwall_pathing.replay`; user: work goes into pathfix as v43; "a yari wall is a customizable
+formation, player can set rank depth as they please").
+- Recording: pathfix-only v42 (build id Oct 17 12:46:30), I ON at tick ~872 and OFF at ~2127
+  (from the log's minute summaries), battle to tick 2161; the P recording after it was empty. The
+  log is kept as `data/yariwall_recording_log_20261019.txt` (local). During the session the user
+  renamed the game folder's v42 `dinput8.dll` to `dinput8.dll.pathfix42`.
+- Static (`docs/re/formation_types_x86.md`; decompiles local in `docs/re/walk_decompiles/x86|x64/`,
+  vtables in `docs/re/listings/vtables_formation_x86.txt` / `_x64.txt`, prologues
+  `docs/re/prologues_v43.txt`): the formation object is `[group+0x624]` (FUN_101bc880 takes it from
+  `[[ctrl+4]+0x624]`, slot 9 call at 0x101BC9F8, return 0x101BC9FB, args out list, target, width
+  `[[ctrl+0x18]+0x6C]`, men; RET 0x10). Type 3 (yari wall) vtable 0x115E0760, ctor FUN_103bdab0
+  (+0x08/+0x0C army unit +0x3B4/+0x3B8, +0x10/+0x14 = 1.0, +0x18 army unit, +0x1C/+0x20 copies),
+  slot +0x10 files = FUN_103ce750(W, +0x1C, 1.0), slot 9 at 0x103C5D30: ONE straight grid at the
+  target point and its piece heading, 1 m files centre-out, 1 m ranks backwards, slot flag byte 1
+  (no navmesh test), slot types 5 / 4 / 3. The block generator FUN_103c4720 on the same object
+  gives the same grid on straight open ground. Slot list x86: count +0x08, data +0x0C, 0x24 bytes
+  per slot (flag +0x00). The formation change handler FUN_1014e870 runs on the army unit.
+- v43 = v42 + Y1 (entry hook 0x103C5D30, HOOK_DETOUR_RET: block span narrower than W - 1 m or a
+  bend > 30 deg -> FUN_103c4720 lays the slots; kept 3 game s; final wall the game's) + Y3 (G's
+  end-gap anchor not applied for a yari wall; release.csv reason yari_end) + the yari depth in
+  GPlan (ceil(n / own files) x 1 m) + capture (orders gtick / form_* / yari / groups / req_width,
+  yari.csv, release depth_kind, event hook FUN_1014e870) + `PATHFIX_TOGGLE_TICKS` (flips by game
+  tick on the key loop) + `PATHFIX_YARI=0` (all of Y off = v42's G exactly; the yari depth was
+  first not tied to it and the schedule run desynced at tick 1061). FUN_10154180 is zombiefix's
+  probe site, not hooked (check_prologues refuses shared bytes). Harness: full 136 (U4 / U5 new),
+  new run "yari" 27 (enters the real CALL [ESI+0x24] at 0x1BC9F8, both generators stubbed to
+  return markers); all fixes' tests, check_prologues (64 sites), release equivalence 79/79 pass.
+- Runs (autorun, speed 1, capture, pathfix-only builds from a scratch tree; analysis
+  `analysis/yariwall_passes.py`, `yariwall_summary.py`; `v40_load.py` paths / prefixes fixed):
+  135707 schedule with Y off = in sync with the recording (the user's battle): the worse unit
+  splits 12 s with 33 strays in a corridor pass and again round the hairpin; 140527 off; 141328 G
+  on all battle; 140117 / 140929 Y1 (gatehouse pass: spread 27 -> 9 m, strays 20 -> 0..1; corridor
+  pass unchanged); 141749 / 142149 Y2 (clear the slots' flag byte after the game's grid: no effect,
+  every "unreachable" slot was on the navmesh, nearer by a parallel passage; Y2 removed);
+  143041 / 143442 Y1 + Y3: split 0, strays 0..1, spread p90 10 m vs 18, speed 2.29 / 2.69 vs off
+  2.27 and G 2.82 (table in README 3.10). Cause of the corridor split: G's end-gap anchor laid the
+  straight wall at the corridor exit while the unit was at the gatehouse; with the fix off there
+  was no split. Idle re-form cycles of a finished unit (form-up action FUN_103d4c30, slot off the
+  navmesh for every man every ~3.5 s) appear more often with v43 only because the units finish
+  earlier; men stand in their slots (median 0.07 m).
+- Game folder at the end (user request): `dinput8.dll` = the dev build with every fix (SHA-256
+  F339B42E..., 377344 bytes); the pathfix-only v43 build of the runs is `dinput8.dll.pathfix43`
+  (renamed by the user); version.dll the autorun tool; `dinput8.dll.pathfix42` is gone (user).
+
+Next (not started): user live check (yari wall through the gatehouse and round the corner, I off
+and on, P recordings), a second depth (one shallow, one deep wall), and whether the end-gap rule
+also hurts block units at corridors with a parallel passage. Release 1.0 has no yari part.

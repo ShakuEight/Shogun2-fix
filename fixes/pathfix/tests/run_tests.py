@@ -11,6 +11,8 @@ as every version since v20:
   pkey  (v41)   capture on: P ends the capture, then I still switches G on and off
   rec   (v42)   no PATHFIX_CAPTURE: P starts / stops recordings, each in its own run folder, one still
                 on when the game closes (own fresh folder)
+  yari  (v43)   capture on, PATHFIX_TOGGLE_TICKS: the scheduled flips, and Y (the yari wall laid along the
+                path) entered through the real slot call site (own fresh folder)
 full / geo / crash / pkey run with PATHFIX_CAPTURE=1 (the harness sets it before the proxy loads).
 With --with-release (release.bat), two more runs of mode "release" in fresh folders:
   release_dev   the dev DLL switched to variant G through its test export (the reference)
@@ -34,7 +36,7 @@ WITH_RELEASE = '--with-release' in sys.argv
 GAME = ARGS[0] if ARGS else r'E:\SteamLibrary\steamapps\common\Total War SHOGUN 2'
 BUILD = os.path.join(REPO, 'build')
 OUT = os.path.join(BUILD, 'test_pathfix')
-EXPECT = {'full': 134, 'geo': 32, 'play': 18, 'pkey': 9, 'rec': 18}   # v42 (v41: full 124; v40: 122)
+EXPECT = {'full': 136, 'geo': 32, 'play': 18, 'pkey': 9, 'rec': 18, 'yari': 27}   # v43 (v42: full 134; v41: 124; v40: 122)
 EXPECT_RELEASE = {'release_dev': 79, 'release_pub': 86}   # release 1.0 (v42): 79 shared + RS1-3 + RF1-4 (v41 package: 71 / 78)
 RELEASE_DLL = os.path.join(REPO, 'build_release', 'dinput8.dll')
 
@@ -66,8 +68,9 @@ def run(tag, mode, folder=OUT, proxy_src=None):
 
 
 ok_all = True
-for tag, mode in (('full1', 'full'), ('full2', 'full'), ('geo', 'geo'), ('play', 'play'), ('pkey', 'pkey'), ('rec', 'rec')):
-    code, text = run(tag, mode, os.path.join(OUT, mode) if mode in ('play', 'rec') else OUT)
+for tag, mode in (('full1', 'full'), ('full2', 'full'), ('geo', 'geo'), ('play', 'play'), ('pkey', 'pkey'), ('rec', 'rec'),
+                  ('yari', 'yari')):
+    code, text = run(tag, mode, os.path.join(OUT, mode) if mode in ('play', 'rec', 'yari') else OUT)
     m = re.search(r'RESULT (\d+) passed, (\d+) failed', text)
     ok = bool(m) and int(m.group(2)) == 0 and (EXPECT[mode] is None or int(m.group(1)) == EXPECT[mode])
     for line in text.splitlines():

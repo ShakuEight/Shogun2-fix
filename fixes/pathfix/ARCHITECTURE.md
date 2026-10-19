@@ -298,6 +298,25 @@ depth + 3 m left; it stays latched until a new order. v42 also brought recording
 play: P starts and stops a recording into its own folder, any number of times, with its own
 tones, and every log line carries the local time.
 
+**v43: the yari wall.** The second bug report: units in yari wall still went wrong through a
+gatehouse and round a sharp corner, men wandering off and the unit splitting into two blobs. A
+static read found the reason first. The yari wall is its own formation class, and its slot
+generator lays one straight grid at the block front: no walk along the path pieces, no row
+narrowed to the passage, and every slot exempt from the navmesh test
+(`docs/re/formation_types_x86.md`). The first rule (Y1) hands the slot laying to the block's own
+generator wherever the wall's block meets a node narrower than the wall or a bend; on straight
+open ground the two give the same grid. To measure it on the user's replay, which was recorded
+with two I presses mid-battle, v43 got a tick schedule (`PATHFIX_TOGGLE_TICKS`) that replays the
+presses, so one run stayed in sync with the recording. Y1 cleaned the gatehouse pass but not a
+long corridor that ended at the destination: there the men split even with G as v42, and not with
+the fix off. The run showed why. G's end-gap anchor laid the whole straight wall at the corridor
+exit while the unit was still at the gatehouse, and the men whose slots lay on the far side took
+a parallel passage. A second idea, clearing the slots' "no navmesh test" flag so the game would
+hold such men, changed nothing: every one of those slots was on the navmesh, just nearer by the
+other passage. It was taken out again. The rule that worked (Y3) keeps the game's front for a
+yari wall when a narrow run reaches the path end. With Y1 and Y3 the replay's two yari units
+showed no split and at most one stray (README section 3.10).
+
 ---
 
 ## Part 3. What did not work, and why
@@ -356,3 +375,5 @@ radius (v35), and one distance argument (v38 to v40).
 - The fix has only been validated at 3x game speed.
 - The park release of v42 / 1.0 has passed the offline harness and was accepted in game, but
   no recording of the fixed replay has been analysed yet.
+- v43's yari wall rules are measured on one replay only, and not yet in live play. Whether the
+  end-gap rule (G v40) also hurts block units at corridors with a parallel passage is untested.

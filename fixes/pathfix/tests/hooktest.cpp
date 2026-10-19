@@ -1,3 +1,14 @@
+// v43 (2026-10-19): new run "yari" (capture on, PATHFIX_TOGGLE_TICKS set): the scheduled flips switch G
+// on and off by game tick (TG1..TG4); a fake yari wall object (the real type 3 vtable 0x115E0760, so
+// its real files-for-width slot runs) sits at [unit+0x624] with a fake army unit (ability test = a game
+// routine MOV AL,1; RET 4); the slot call is entered through the real CALL [ESI+0x24] at 0x1BC9F8
+// (0x1BC9FB becomes JMP back to the harness), the real generators 0x103C5D30 and FUN_103c4720 are
+// stubbed after their stolen bytes to return 0x5D30 / 0x4720, so EAX tells which one ran: Y1 clean
+// straight span -> the game's; Y2 node narrower than W - 1 -> block; Y3 kept; Y4 keep expired; Y5 a
+// 90 degree bend in the span -> block; Y6 front at the path end -> the game's; Y7 no plan; Y8 another
+// object; Y9 another call site; Y10 fix off. YD G's depth for a yari wall (1 m rows, own files);
+// YO / YC / YT / YL orders.csv, yari.csv, totals, log. Full run: U4 / U5 the two new entries restored.
+// --- v41 header ---
 // Offline harness for v41 (2026-10-16): variant G only, I toggles off <-> G, no recording in play.
 // Runs full / geo / crash / pkey set PATHFIX_CAPTURE=1 before the proxy loads, so v40's capture
 // checks still apply. The real I key now toggles off <-> G (G section entry, "off again", F1, the
@@ -296,6 +307,101 @@ extern "C" __declspec(naked) void EnterRadius() {
         mov ebx, g_argSoldier2
         jmp dword ptr [g_radiusSite]
     }
+}
+
+// ---- v43: entering the yari wall slot call CALL [ESI+0x24] at 0x1BC9F8 (FUN_101bc880); the
+// instruction after it (0x1BC9FB) is patched to JMP [g_yBack], back into the harness.
+extern "C" {
+uint32_t g_ySaveEsp = 0, g_ySlotSite = 0, g_yBack = 0, g_yObj = 0;
+uint32_t g_yA1 = 0, g_yA2 = 0, g_yA3 = 0, g_yA4 = 0, g_yEax = 0;
+}
+extern "C" __declspec(naked) void BackFromSlot() {
+    __asm {
+        mov g_yEax, eax
+        mov esp, g_ySaveEsp
+        pop ebp
+        pop edi
+        pop esi
+        pop ebx
+        ret
+    }
+}
+extern "C" __declspec(naked) void EnterSlot() {
+    __asm {
+        push ebx
+        push esi
+        push edi
+        push ebp
+        mov g_ySaveEsp, esp
+        sub esp, 0x100
+        and esp, 0xFFFFFFF0
+        push g_yA4
+        push g_yA3
+        push g_yA2
+        push g_yA1
+        mov ecx, g_yObj
+        mov esi, [ecx]
+        jmp dword ptr [g_ySlotSite]
+    }
+}
+// EAX of the slot call: 0x5D30 = the game's yari generator ran (stub), 0x4720 = the block generator
+// (stub) through the hook, 0xDEAD = a fault.
+static uint8_t g_ySlots[32 * 0x24];               // the fake slot list's data
+static int SlotFlagsSet(uint32_t n) {             // slots whose flag byte is still 1
+    int k = 0;
+    for (uint32_t i = 0; i < n; i++) k += g_ySlots[i * 0x24] == 1;
+    return k;
+}
+static uint32_t CallSlot(uint8_t* obj, float w, uint32_t men, uint32_t listCount = 0xFFFFFFFF) {
+    static uint8_t outBuf[0x40], target[0x80];
+    memset(outBuf, 0, sizeof(outBuf));
+    memset(g_ySlots, 0, sizeof(g_ySlots));
+    uint32_t lc = listCount == 0xFFFFFFFF ? men : listCount;
+    for (uint32_t i = 0; i < lc && i < 32; i++) g_ySlots[i * 0x24] = 1;
+    uint32_t dp = (uint32_t)(uintptr_t)g_ySlots;
+    memcpy(outBuf + 0x04, &lc, 4);
+    memcpy(outBuf + 0x08, &lc, 4);
+    memcpy(outBuf + 0x0C, &dp, 4);
+    g_yObj = (uint32_t)(uintptr_t)obj;
+    g_yA1 = (uint32_t)(uintptr_t)outBuf;
+    g_yA2 = (uint32_t)(uintptr_t)target;
+    memcpy(&g_yA3, &w, 4);
+    g_yA4 = men;
+    g_yEax = 0;
+    __try { EnterSlot(); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return 0xDEAD; }
+    return g_yEax;
+}
+typedef uint32_t (__fastcall *FnSlotGen)(void* ecx, void* edx, uint32_t out, uint32_t target, float w, uint32_t men);
+static uint32_t CallSlotDirect(uint8_t* obj, float w, uint32_t men) {   // not from 0x1BC9F8: the hook stays out
+    static uint8_t outBuf[0x40], target[0x80];
+    __try { return ((FnSlotGen)(g_base + 0x3C5D30))(obj, 0, (uint32_t)(uintptr_t)outBuf, (uint32_t)(uintptr_t)target, w, men); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return 0xDEAD; }
+}
+// First occurrence of a byte pattern in the mapped image's code section.
+static uint8_t* FindCode(const char* pat, size_t n) {
+    const IMAGE_DOS_HEADER* d = (const IMAGE_DOS_HEADER*)g_base;
+    const IMAGE_NT_HEADERS32* nt = (const IMAGE_NT_HEADERS32*)(g_base + d->e_lfanew);
+    const IMAGE_SECTION_HEADER* sec = IMAGE_FIRST_SECTION(nt);
+    for (int i = 0; i < nt->FileHeader.NumberOfSections; i++, sec++) {
+        if (!(sec->Characteristics & IMAGE_SCN_MEM_EXECUTE)) continue;
+        uint8_t* a = g_base + sec->VirtualAddress;
+        uint32_t len = sec->Misc.VirtualSize;
+        for (uint32_t k = 0; k + n <= len; k++)
+            if (memcmp(a + k, pat, n) == 0) return a + k;
+    }
+    return nullptr;
+}
+// Nodes through the points pts[0..n] (x, z), width w each.
+static uint8_t* MakeNodesPts(uint8_t** N, int n, const float (*pts)[2], float w) {
+    for (int i = 0; i < n; i++) {
+        N[i] = (uint8_t*)VirtualAlloc(nullptr, 0x100, MEM_COMMIT | MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE);
+        memcpy(N[i] + 0x74, &w, 4); memcpy(N[i] + 0x78, &w, 4);
+        float f[4] = { pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1] };
+        memcpy(N[i] + 0x80, f, 16);
+    }
+    for (int i = 0; i < n; i++) { uint32_t nx = i + 1 < n ? (uint32_t)(uintptr_t)N[i + 1] : 0; memcpy(N[i] + 0x08, &nx, 4); }
+    return N[0];
 }
 
 // Returns w after the patch; frame end = (ex, ez).
@@ -852,14 +958,19 @@ static long TotalsValue(const char* text, const char* name) {
 int main(int argc, char** argv) {
     setvbuf(stdout, nullptr, _IONBF, 0);
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
-    if (argc < 5) { printf("usage: hooktest41 <game dll> <proxy> <tag> full|crash|geo|play|pkey|release\n"); return 2; }
+    if (argc < 5) { printf("usage: hooktest <game dll> <proxy> <tag> full|crash|geo|play|pkey|rec|release|yari\n"); return 2; }
     bool crash = strcmp(argv[4], "crash") == 0;
     bool geo = strcmp(argv[4], "geo") == 0;
     bool play = strcmp(argv[4], "play") == 0;     // v41: no recording (v42: no P pressed)
     bool pkey = strcmp(argv[4], "pkey") == 0;     // v41: keys after P
     bool rec = strcmp(argv[4], "rec") == 0;       // v42: play, P toggles a recording
     bool release = strcmp(argv[4], "release") == 0;   // public release: G always on, equivalence with dev G
+    bool yari = strcmp(argv[4], "yari") == 0;         // v43: Y, the yari wall laid along the path
     SetEnvironmentVariableA("PATHFIX_CAPTURE", (play || rec || release) ? nullptr : "1");
+    // v43: the scheduled flips (GT_TICK0 + 100 on, + 400 off), only in the yari run
+    SetEnvironmentVariableA("PATHFIX_TOGGLE_TICKS", yari ? "36100,36400" : nullptr);
+    SetEnvironmentVariableA("PATHFIX_YARI", nullptr);
+    SetEnvironmentVariableA("PATHFIX_ON", nullptr);
     HMODULE game = LoadLibraryExA(argv[1], nullptr, DONT_RESOLVE_DLL_REFERENCES);
     if (!game) { printf("cannot map game dll: %lu\n", GetLastError()); return 1; }
     g_base = (uint8_t*)game;
@@ -907,6 +1018,23 @@ int main(int argc, char** argv) {
     memcpy(stubRad + 2, &br, 4);
     Patch(g_base + 0x3DF4D6, stubRad, sizeof(stubRad));
     g_radiusSite = (uint32_t)(uintptr_t)(g_base + 0x3DF4D1);
+    // v43: the yari wall slot generator and the block slot generator return markers after their
+    // stolen bytes; the slot call site returns to the harness
+    const uint8_t ySlotPro[] = { 0x81, 0xEC, 0x84, 0x00, 0x00, 0x00 };
+    const uint8_t yBlockPro[] = { 0x83, 0xEC, 0x28, 0x53, 0x8B, 0x5C, 0x24, 0x30 };
+    const uint8_t yCallSeq[] = { 0xFF, 0x56, 0x24, 0x8B, 0xB4, 0x24, 0xB4, 0x00, 0x00, 0x00 };
+    if (memcmp(g_base + 0x3C5D30, ySlotPro, 6) != 0 || memcmp(g_base + 0x3C4720, yBlockPro, 8) != 0 ||
+        memcmp(g_base + 0x1BC9F8, yCallSeq, sizeof(yCallSeq)) != 0) { printf("yari generator / call site bytes differ\n"); return 1; }
+    const uint8_t stubYSlot[] = { 0x81, 0xC4, 0x84, 0x00, 0x00, 0x00, 0xB8, 0x30, 0x5D, 0x00, 0x00, 0xC2, 0x10, 0x00 };
+    const uint8_t stubYBlock[] = { 0x5B, 0x83, 0xC4, 0x28, 0xB8, 0x20, 0x47, 0x00, 0x00, 0xC2, 0x10, 0x00 };
+    Patch(g_base + 0x3C5D30 + 6, stubYSlot, sizeof(stubYSlot));
+    Patch(g_base + 0x3C4720 + 8, stubYBlock, sizeof(stubYBlock));
+    g_yBack = (uint32_t)(uintptr_t)&BackFromSlot;
+    uint8_t stubYRet[6] = { 0xFF, 0x25 };
+    uint32_t yb = (uint32_t)(uintptr_t)&g_yBack;
+    memcpy(stubYRet + 2, &yb, 4);
+    Patch(g_base + 0x1BC9FB, stubYRet, sizeof(stubYRet));
+    g_ySlotSite = (uint32_t)(uintptr_t)(g_base + 0x1BC9F8);
 
     HMODULE proxy = LoadLibraryA(argv[2]);
     if (!proxy) { printf("cannot load proxy: %lu\n", GetLastError()); return 1; }
@@ -1027,6 +1155,186 @@ int main(int argc, char** argv) {
     printf("unit 0x%08X, soldiers S0 0x%08X .. S9 0x%08X, portal 0x%08X\n", (uint32_t)(uintptr_t)U,
            (uint32_t)(uintptr_t)S[0], (uint32_t)(uintptr_t)S[9], (uint32_t)(uintptr_t)pA.P);
 
+    if (yari) {
+        printf("v43 yari wall (Y):\n");
+        // fake yari wall object: the real type 3 vtable, file offset +0x1C = 1.0, spacing 1.0 (+0x10 / +0x14)
+        uint8_t* Yo = Alloc(0x100);
+        uint8_t* Yo2 = Alloc(0x100);
+        uint8_t* Army = Alloc(0x1000);
+        uint8_t* AbV = Alloc(0x40);
+        uint8_t* yes = FindCode("\xB0\x01\xC2\x04\x00", 5);   // MOV AL,1; RET 4
+        uint8_t* yobjs[2] = { Yo, Yo2 };
+        for (uint8_t* o : yobjs) {
+            PutU(o, 0x00, (uint32_t)(uintptr_t)(g_base + 0x15E0760));
+            PutF(o, 0x08, 1.0f); PutF(o, 0x0C, 0.5f); PutF(o, 0x10, 1.0f); PutF(o, 0x14, 1.0f);
+            PutU(o, 0x18, (uint32_t)(uintptr_t)Army); PutF(o, 0x1C, 1.0f); PutF(o, 0x20, 0.5f);
+        }
+        PutU(AbV, 4, (uint32_t)(uintptr_t)yes);
+        PutU(Army, 0xED4, (uint32_t)(uintptr_t)AbV);
+        PutU(Army, 0xB8C, 1);
+        PutU(U, 0x624, (uint32_t)(uintptr_t)Yo);
+        PutU(U, 0x510, (uint32_t)(uintptr_t)Army);
+        PutF(Pb, 0x6C, 9.0f);
+        CHECK(yes != nullptr, "Y0 a game routine MOV AL,1; RET 4 for the fake ability test (%p)", yes);
+        float cur[2];
+        auto setcur = [&](uint8_t* node, float t) { uint32_t u = (uint32_t)(uintptr_t)node; memcpy(cur, &u, 4); cur[1] = t; };
+        auto lay = [&](uint8_t* node, float t) {     // orders hook (plan) + the real advance through its call site
+            PutU(C, 0x34, (uint32_t)(uintptr_t)node); PutF(C, 0x38, t);
+            CallOrders(C);
+            setcur(node, t);
+            CallAdvance(cur, 11.0f);
+        };
+        // TG1: the first scheduled tick switches G on (no key): G1's release, with the yari depth
+        // (10 men, widest 36 m: 10 files of the yari wall -> 1 rank x 1 m): A = 92 + 1 + 3 = 96 = node 7 t 0.2
+        uint8_t* GN[10];
+        const float gl[10] = { 20, 20, 20, 8, 8, 8, 8, 20, 20, 20 };
+        const float gw[10] = { 36, 36, 36, 5.5f, 5.5f, 5.5f, 5.5f, 36, 36, 36 };
+        MakeNodes(GN, 10, gl, gw);
+        Advance(2000);
+        Sleep(300);
+        lay(GN[2], 0.5f);
+        CHECK(GetU((uint8_t*)cur, 0) == (uint32_t)(uintptr_t)GN[7] && fabsf(cur[1] - 0.2f) < 0.005f,
+              "TG1 + YD scheduled flip at tick 36100 -> G on; yari depth 1 m: release to node 7 t 0.2 (node %s t %.4f)",
+              GetU((uint8_t*)cur, 0) == (uint32_t)(uintptr_t)GN[7] ? "7" : "other", cur[1]);
+        uint32_t e;
+        // a straight open path: 5 nodes of 20 m, 36 m wide
+        uint8_t* SP[5];
+        const float sl[5] = { 20, 20, 20, 20, 20 };
+        const float sw[5] = { 36, 36, 36, 36, 36 };
+        MakeNodes(SP, 5, sl, sw);
+        PutU(C, 0x30, 0);                     // first laying call of an order: a new path
+        lay(SP[0], 0.0f);
+        PutU(C, 0x30, 2);
+        e = CallSlot(Yo, 9.0f, 10);
+        CHECK(e == 0x5D30 && SlotFlagsSet(10) == 10,
+              "Y1 straight 36 m path, W 9 (9 files, 2 ranks) -> the game's yari wall, slot list untouched (EAX 0x%X)", e);
+        lay(SP[0], 0.25f);
+        e = CallSlot(Yo, 40.0f, 10);
+        CHECK(e == 0x4720 && SlotFlagsSet(10) == 10,
+              "Y2 W 40 on 36 m nodes (narrower than W - 1) -> laid by the block generator, list untouched (EAX 0x%X)", e);
+        lay(SP[0], 0.5f);
+        e = CallSlot(Yo, 9.0f, 10);
+        CHECK(e == 0x4720, "Y3 clean span right after -> kept on the block generator (EAX 0x%X)", e);
+        Advance(1000);                        // 3600 game ms > the 3000 ms keep window
+        lay(SP[0], 0.75f);
+        e = CallSlot(Yo, 9.0f, 10);
+        CHECK(e == 0x5D30, "Y4 keep window over -> the game's yari wall again (EAX 0x%X)", e);
+        // a 90 degree turn at 20 m: front 21 m, span 19..22 m covers both nodes
+        uint8_t* BN[3];
+        const float bp[4][2] = { { 0, 0 }, { 20, 0 }, { 20, 20 }, { 20, 40 } };
+        MakeNodesPts(BN, 3, bp, 36.0f);
+        PutU(C, 0x30, 0);
+        lay(BN[0], 0.5f);
+        PutU(C, 0x30, 2);
+        e = CallSlot(Yo, 9.0f, 10);
+        CHECK(e == 0x4720, "Y5 90 degree bend inside the block -> laid by the block generator (EAX 0x%X)", e);
+        // the front at the path end: 30 m path, cursor 25 m, D 11
+        uint8_t* EN[2];
+        const float el[2] = { 15, 15 };
+        const float ew[2] = { 36, 36 };
+        MakeNodes(EN, 2, el, ew);
+        PutU(C, 0x30, 0);
+        lay(EN[1], 0.6667f);
+        PutU(C, 0x30, 2);
+        e = CallSlot(Yo, 40.0f, 10);
+        CHECK(e == 0x5D30 && SlotFlagsSet(10) == 10,
+              "Y6 front at the path end (the final wall), even with W 40 -> the game's (EAX 0x%X)", e);
+        e = CallSlot(Yo, 40.0f, 10);
+        CHECK(e == 0x5D30, "Y7 no plan left for this call -> the game's (EAX 0x%X)", e);
+        lay(SP[1], 0.0f);
+        e = CallSlot(Yo2, 40.0f, 10);
+        CHECK(e == 0x5D30 && SlotFlagsSet(10) == 10, "Y8 another formation object than the unit's -> the game's, untouched (EAX 0x%X)", e);
+        lay(SP[1], 0.25f);
+        e = CallSlotDirect(Yo, 40.0f, 10);
+        CHECK(e == 0x5D30, "Y9 called from elsewhere -> the game's (EAX 0x%X)", e);
+        lay(SP[1], 0.375f);
+        e = CallSlot(Yo, 9.0f, 10);
+        CHECK(e == 0x5D30, "Y11 clean span on a new path -> the game's yari wall (EAX 0x%X)", e);
+        // Y12 (Y3): a narrow run that reaches the path end: G would put the front 2 m before the end
+        // (end_gap); a yari wall keeps the game's front: cursor 30 + 11 = 41 = node 2 t 0.125
+        {
+            uint8_t* M[5];
+            const float ml[5] = { 20, 20, 8, 8, 8 };
+            const float mw[5] = { 36, 36, 5.5f, 5.5f, 5.5f };
+            MakeNodes(M, 5, ml, mw);
+            PutU(C, 0x30, 0);
+            lay(M[1], 0.5f);
+            PutU(C, 0x30, 2);
+            CHECK(GetU((uint8_t*)cur, 0) == (uint32_t)(uintptr_t)M[2] && fabsf(cur[1] - 0.125f) < 1e-3f,
+                  "Y12 run to the path end, yari wall -> no end-gap anchor, the game's front (node %s t %.4f)",
+                  GetU((uint8_t*)cur, 0) == (uint32_t)(uintptr_t)M[2] ? "2" : "other", cur[1]);
+        }
+        // TG2: the second scheduled tick switches G off
+        Advance(8000);
+        Sleep(300);
+        lay(GN[2], 0.5f);
+        CHECK(GetU((uint8_t*)cur, 0) == (uint32_t)(uintptr_t)GN[3] && fabsf(cur[1] - 0.125f) < 1e-3f,
+              "TG2 scheduled flip at tick 36400 -> G off: vanilla advance (node 3 t %.4f)", cur[1]);
+        lay(SP[1], 0.5f);
+        e = CallSlot(Yo, 40.0f, 10);
+        CHECK(e == 0x5D30 && SlotFlagsSet(10) == 10, "Y10 fix off -> the game's, flags untouched (EAX 0x%X)", e);
+        PutU(C, 0x34, 0); PutF(C, 0x38, 0.0f);
+
+        FreeLibrary(proxy);
+        static char text[1 << 20];
+        char path[MAX_PATH + 48];
+        sprintf(path, "%spathfix_capture_v43_orders.csv", runDir);
+        ReadText(path, text, sizeof(text));
+        CHECK(strstr(text, ",0x15E0760,1.0000,0.5000,1.0000,1.0000,1.0000,1,1,9.000,") != nullptr,
+              "YO orders.csv: form_vt 0x15E0760, f0..f3 1 / 0.5 / 1 / 1, x1c 1, yari 1, groups 1, req_width 9");
+        sprintf(path, "%spathfix_capture_v43_release.csv", runDir);
+        ReadText(path, text, sizeof(text));
+        CHECK(strstr(text, ",0,0,yari_end,yari") != nullptr, "YE release.csv: the Y12 row, reason yari_end, not applied");
+        CHECK(strstr(text, ",applied,to_end,reason,depth_kind") != nullptr &&
+              strstr(text, ",1.00,11.000,46.000,21.00,56.00,1,0,past_run,yari") != nullptr,
+              "YD release.csv: the TG1 row with depth 1.00, A 56 (from the cursor node), depth_kind yari");
+        sprintf(path, "%spathfix_capture_v43_yari.csv", runDir);
+        ReadText(path, text, sizeof(text));
+        int lines = 0;
+        for (const char* p = text; *p; p++) if (*p == '\n') lines++;
+        CHECK(strstr(text, "seq,timestamp_ms,thread_id,gtick,ctrl,unit,men,width,files,ranks,depth,front,path_end,span_lo,span_hi,"
+                           "min_width,max_turn,narrow,bend,sub,reason") != nullptr && lines == 8,
+              "YC yari.csv: header + 7 rows (%d lines)", lines);
+        CHECK(strstr(text, ",10,9.00,9,2,1.00,11.00,100.00,9.00,12.00,36.00,0.0,0,0,0,clean") != nullptr &&
+              strstr(text, ",10,40.00,10,1,0.00,") != nullptr && strstr(text, ",36.00,0.0,1,0,1,bad_span") != nullptr &&
+              strstr(text, ",0,0,1,kept") != nullptr && strstr(text, ",90.0,0,1,1,bad_span") != nullptr &&
+              strstr(text, ",0,0,end") != nullptr,
+              "YC yari.csv: Y1 clean (9 files, 2 ranks, depth 1, span 9..12, min width 36), Y2 narrow, Y3 kept, Y5 bend 90, Y6 end");
+        sprintf(path, "%spathfix_capture_v43_fix_totals.csv", runDir);
+        ReadText(path, text, sizeof(text));
+        printf("  yari: calls %ld off %ld other %ld no_plan %ld mismatch %ld no_files %ld end %ld clean %ld narrow %ld bend %ld "
+               "kept %ld faults %ld rows %ld, yari depth plans %ld\n",
+               TotalsValue(text, "yari_calls"), TotalsValue(text, "yari_off"), TotalsValue(text, "yari_other_site"),
+               TotalsValue(text, "yari_no_plan"), TotalsValue(text, "yari_mismatch"), TotalsValue(text, "yari_no_files"),
+               TotalsValue(text, "yari_end"), TotalsValue(text, "yari_clean"), TotalsValue(text, "yari_sub_narrow"),
+               TotalsValue(text, "yari_sub_bend"), TotalsValue(text, "yari_sub_kept"), TotalsValue(text, "yari_faults"),
+               TotalsValue(text, "yari_rows"), TotalsValue(text, "release_plan_yari_depth"));
+        CHECK(TotalsValue(text, "yari_calls") == 11 && TotalsValue(text, "yari_off") == 1 &&
+              TotalsValue(text, "yari_other_site") == 1 && TotalsValue(text, "yari_no_plan") == 1 &&
+              TotalsValue(text, "yari_mismatch") == 1 && TotalsValue(text, "yari_no_files") == 0 &&
+              TotalsValue(text, "yari_end") == 1 && TotalsValue(text, "yari_clean") == 3 &&
+              TotalsValue(text, "yari_sub_narrow") == 1 && TotalsValue(text, "yari_sub_bend") == 1 &&
+              TotalsValue(text, "yari_sub_kept") == 1 && TotalsValue(text, "yari_faults") == 0 &&
+              TotalsValue(text, "yari_rows") == 7 && TotalsValue(text, "release_plan_yari_depth") == 11 &&
+              TotalsValue(text, "yari_on") == 1 && TotalsValue(text, "yari_no_end_gap") == 1,
+              "YT totals: 11 slot calls (1 off, 1 other site, 1 no plan, 1 mismatch, 1 end, 3 clean, 1 narrow, 1 bend, 1 kept), 7 rows, 11 yari-depth plans, 1 end gap left to the game");
+        sprintf(path, "%spathfix_log.txt", runDir);
+        ReadText(path, text, sizeof(text));
+        CHECK(strstr(text, "PATHFIX_TOGGLE_TICKS: the path fix flips at game ticks 36100, 36400 (2 flips; starts OFF)") != nullptr &&
+              strstr(text, "PATHFIX_TOGGLE_TICKS: flip 1 of 2 at tick ") != nullptr &&
+              strstr(text, "(scheduled 36100) -> path fix ON") != nullptr &&
+              strstr(text, "PATHFIX_TOGGLE_TICKS: flip 2 of 2 at tick ") != nullptr &&
+              strstr(text, "(scheduled 36400) -> path fix OFF") != nullptr,
+              "TG3 log: the schedule and both flips");
+        CHECK(strstr(text, "Yari wall (Y, v43 on): 11 slot calls") != nullptr && strstr(text, "v43 Y:       yari wall") != nullptr &&
+              strstr(text, "PATHFIX BUILD v43") != nullptr,
+              "YL log: v43 banner, the Y install line and the Y totals line");
+        CHECK(memcmp(g_base + 0x3C5D30, "\x81\xEC\x84\x00\x00\x00", 6) == 0 &&
+              memcmp(g_base + 0x14E870, "\x51\x53\x8A\x5C\x24\x10", 6) == 0, "TG4 the two v43 entries restored after unload");
+        printf("RESULT %d passed, %d failed\n", g_pass, g_fail);
+        return g_fail ? 4 : 0;
+    }
+
     if (crash) {
         Apex("K1 off apex", S[0], pA, r, zl, r, zl);
         Press(0);   // v41: I -> G
@@ -1135,13 +1443,13 @@ int main(int argc, char** argv) {
             Press(2);   // O: marker
             Press(4);   // P: recording 1 off
             Sleep(1000);
-            int rows1 = dataRows(d1, "pathfix_capture_v42_release.csv");
+            int rows1 = dataRows(d1, "pathfix_capture_v43_release.csv");
             CHECK(rows1 == 1, "RE4 recording 1: release.csv with the RE3 row (%d data rows)", rows1);
-            CHECK(fileHas(d1, "pathfix_log.txt", "PATHFIX BUILD v42 recording 1") && strstr(text, "RECORDING STOPPED") &&
+            CHECK(fileHas(d1, "pathfix_log.txt", "PATHFIX BUILD v43 recording 1") && strstr(text, "RECORDING STOPPED") &&
                   strstr(text, "P: recording 1 OFF"), "RE5 recording 1: its own log, stopped");
-            CHECK(fileHas(d1, "pathfix_capture_v42_events.csv", ",MARKER,") && strstr(text, ",FIXMODE,"),
+            CHECK(fileHas(d1, "pathfix_capture_v43_events.csv", ",MARKER,") && strstr(text, ",FIXMODE,"),
                   "RE6 recording 1: events.csv with the O marker and the fix mode rows");
-            CHECK(dataRows(d1, "pathfix_capture_v42_orders.csv") >= 1, "RE7 recording 1: orders.csv rows");
+            CHECK(dataRows(d1, "pathfix_capture_v43_orders.csv") >= 1, "RE7 recording 1: orders.csv rows");
             gCheck("RE8 not recording: G still acts", true);
             Press(4);   // P: recording 2 on
             latestDir(d2);
@@ -1150,10 +1458,10 @@ int main(int argc, char** argv) {
             gCheck("RE10 recording 2: block released", true);
             Press(4);   // P: recording 2 off
             Sleep(1000);
-            int rows2 = dataRows(d2, "pathfix_capture_v42_release.csv");
-            CHECK(rows2 == 1 && dataRows(d1, "pathfix_capture_v42_release.csv") == 1,
+            int rows2 = dataRows(d2, "pathfix_capture_v43_release.csv");
+            CHECK(rows2 == 1 && dataRows(d1, "pathfix_capture_v43_release.csv") == 1,
                   "RE11 recording 2 starts empty: 1 release row there (%d), recording 1 untouched", rows2);
-            CHECK(fileHas(d2, "pathfix_log.txt", "PATHFIX BUILD v42 recording 2") && strstr(text, "RECORDING STOPPED") &&
+            CHECK(fileHas(d2, "pathfix_log.txt", "PATHFIX BUILD v43 recording 2") && strstr(text, "RECORDING STOPPED") &&
                   !strstr(text, "recording 1 ON"), "RE12 recording 2: its own log, without recording 1's lines");
             Press(4);   // P: recording 3 on, then the game closes
             latestDir(d3);
@@ -1209,7 +1517,7 @@ int main(int argc, char** argv) {
             return g_fail ? 4 : 0;
         }
         ReadText(logPath, text, sizeof(text));
-        CHECK(strstr(text, "PATHFIX BUILD v42") != nullptr, "LG1 log: v42 banner");
+        CHECK(strstr(text, "PATHFIX BUILD v43") != nullptr, "LG1 log: v43 banner");
         const char* on = strstr(text, "I: path fix ON, variant G (mode 10");
         const char* off = on ? strstr(on, "I: path fix OFF (mode 0") : nullptr;
         CHECK(on && off, "LG2 log: I -> ON variant G, then I -> OFF");
@@ -1961,11 +2269,11 @@ int main(int argc, char** argv) {
     // ---- other hooks still record; flush after 10 s
     Sleep(9000);
     printf("files before the frame test:\n");
-    FileSize(runDir, "pathfix_capture_v42_fix.csv");
-    FileSize(runDir, "pathfix_capture_v42_fixraw.csv");
-    FileSize(runDir, "pathfix_capture_v42_fix_totals.csv");
-    FileSize(runDir, "pathfix_capture_v42_soldiers.csv");
-    FileSize(runDir, "pathfix_capture_v42_events.csv");
+    FileSize(runDir, "pathfix_capture_v43_fix.csv");
+    FileSize(runDir, "pathfix_capture_v43_fixraw.csv");
+    FileSize(runDir, "pathfix_capture_v43_fix_totals.csv");
+    FileSize(runDir, "pathfix_capture_v43_soldiers.csv");
+    FileSize(runDir, "pathfix_capture_v43_events.csv");
 
     // ---- frame self-check: EAX != ESP+0x44 must disable the fix for good
     Press(0);   // v41: I -> G
@@ -1987,10 +2295,12 @@ int main(int argc, char** argv) {
     CHECK(memcmp(g_base + 0x3DF6C0, "\x80\xBB\x71\x04\x00\x00\x01", 7) == 0, "U1 patch site restored");
     CHECK(memcmp(g_base + 0x367600, "\x55\x8B\xEC\x83\xE4\xF0", 6) == 0, "U2 integrator entry restored");
     CHECK(memcmp(g_base + 0x3670A0, "\x83\xEC\x10\x56\x57", 5) == 0, "U3 advance entry restored");
+    CHECK(memcmp(g_base + 0x14E870, "\x51\x53\x8A\x5C\x24\x10", 6) == 0, "U4 v43 formation change entry restored");
+    CHECK(memcmp(g_base + 0x3C5D30, "\x81\xEC\x84\x00\x00\x00", 6) == 0, "U5 v43 yari wall slot generator entry restored");
     printf("files after unload:\n");
-    FileSize(runDir, "pathfix_capture_v42_fix.csv");
-    FileSize(runDir, "pathfix_capture_v42_fixraw.csv");
-    FileSize(runDir, "pathfix_capture_v42_fix_totals.csv");
+    FileSize(runDir, "pathfix_capture_v43_fix.csv");
+    FileSize(runDir, "pathfix_capture_v43_fixraw.csv");
+    FileSize(runDir, "pathfix_capture_v43_fix_totals.csv");
     {
         static char text[1 << 20];
         char path[MAX_PATH + 48];
@@ -2015,14 +2325,14 @@ int main(int argc, char** argv) {
         CHECK(strstr(text, "FIX DISABLED: frame: EAX != hook-point ESP + 0x44") != nullptr, "L5 log: FIX DISABLED (frame)");
         CHECK(strstr(text, "I refused: the corner fix is DISABLED") != nullptr, "L6 log: F6 refused after disable");
         CHECK(strstr(text, "self-checks: frame 1/") != nullptr, "L7 log: fix totals with one frame failure");
-        CHECK(strstr(text, "PATHFIX BUILD v42") != nullptr, "L8 log: v42 banner");
+        CHECK(strstr(text, "PATHFIX BUILD v43") != nullptr, "L8 log: v43 banner");
         CHECK(strstr(text, "v36 game clock: object 0x") != nullptr, "GT6 log: clock object noted at the first FUN_101bc880 hit");
         CHECK(strstr(text, "Endpoints:   FUN_10393000 PASS, FUN_103a0080 PASS") != nullptr, "L12 log: endpoint helpers byte-checked");
         CHECK(strstr(text, "Sound check: one low tone") != nullptr, "L9 log: sound check at window open");
         CHECK(strstr(text, "PlaySound failed") == nullptr, "L10 log: no PlaySound failure");
         CHECK(strstr(text, "O: marker 1") != nullptr, "L11 log: marker under its letter key");
 
-        sprintf(path, "%spathfix_capture_v42_fix_totals.csv", runDir);
+        sprintf(path, "%spathfix_capture_v43_fix_totals.csv", runDir);
         ReadText(path, text, sizeof(text));
         printf("  totals: adjusted %ld, no_helpers %ld, other_pulled %ld, narrow %ld, geometry %ld, mismatch %ld, "
                "geo checked %ld failed %ld, match checked %ld failed %ld, raw %ld, fix-hook samples %ld, "
@@ -2101,23 +2411,24 @@ int main(int argc, char** argv) {
         CHECK(TotalsValue(text, "raw_dumps") == 6, "T2 raw dump: 6 distinct side objects (pA, short, gate, edge, narrow, other end; the link portal has no E read)");
         CHECK(TotalsValue(text, "samples_from_fix_hook") > 0, "T3 soldier samples also triggered from the fix hook");
 
-        sprintf(path, "%spathfix_capture_v42_fixraw.csv", runDir);
+        sprintf(path, "%spathfix_capture_v43_fixraw.csv", runDir);
         ReadText(path, text, sizeof(text));
         int lines = 0;
         for (const char* p = text; *p; p++) if (*p == '\n') lines++;
         CHECK(lines == 7, "T4 fixraw.csv: header + 6 rows (got %d lines)", lines);
         // v37: speed-law columns in the soldier rows and leader / ready / speed mode in the order rows
-        sprintf(path, "%spathfix_capture_v42_soldiers.csv", runDir);
+        sprintf(path, "%spathfix_capture_v43_soldiers.csv", runDir);
         ReadText(path, text, sizeof(text));
         CHECK(strstr(text, ",s_corridor,s_radius,spd_max,spd_cur,spd_tgt,spd_cmd,spd_mul,ord_spd,ord_t,ord_mode,elapsed,moving,direct,f384,f308") != nullptr,
               "SP1 soldiers.csv header: speed-law columns");
         CHECK(strstr(text, ",3.500,1.250,7.500,1.200,0.9000,3.500,3.143,0,0.70,1,0,1,0") != nullptr,
               "SP1 soldiers.csv: a fake soldier's speed fields recorded (max 3.5, cur 1.25, tgt 7.5, cmd 1.2, mul 0.9, order 3.5 / 3.14 / mode 0, elapsed 0.7, moving, f384)");
-        sprintf(path, "%spathfix_capture_v42_orders.csv", runDir);
+        sprintf(path, "%spathfix_capture_v43_orders.csv", runDir);
         ReadText(path, text, sizeof(text));
-        CHECK(strstr(text, ",listed,leader_idx,ready,speed_mode,soldiers") != nullptr, "SP2 orders.csv header: leader_idx, ready, speed_mode");
+        CHECK(strstr(text, ",listed,leader_idx,ready,speed_mode,gtick,form_vt,form_f0,form_f1,form_f2,form_f3,form_x1c,yari,groups,req_width,soldiers") != nullptr,
+              "SP2 orders.csv header: leader_idx, ready, speed_mode, v43 formation columns");
         CHECK(strstr(text, ",2,1,1,") != nullptr, "SP2 orders.csv: leader index 2, ready 1, speed mode 1 recorded");
-        sprintf(path, "%spathfix_capture_v42_radius.csv", runDir);
+        sprintf(path, "%spathfix_capture_v43_radius.csv", runDir);
         ReadText(path, text, sizeof(text));
         lines = 0;
         for (const char* p = text; *p; p++) if (*p == '\n') lines++;
@@ -2125,7 +2436,7 @@ int main(int argc, char** argv) {
               strstr(text, ",unit,") != nullptr && strstr(text, ",own,") != nullptr,
               "T13 radius.csv: assigned / balanced rows, own and unit keys (%d lines)", lines);
         // v38: release counters and rows
-        sprintf(path, "%spathfix_capture_v42_fix_totals.csv", runDir);
+        sprintf(path, "%spathfix_capture_v43_fix_totals.csv", runDir);
         ReadText(path, text, sizeof(text));
         printf("  release: plans %ld (bad cursor %ld, walk fail %ld, no wide %ld, no runs %ld, with runs %ld), adv calls %ld, "
                "other site %ld, no plan %ld, mismatch %ld, vanilla %ld, applied %ld, to end %ld, rows %ld, held %ld, hold end %ld, reset %ld\n",
@@ -2149,7 +2460,7 @@ int main(int argc, char** argv) {
         CHECK(TotalsValue(text, "release_adv_park") == 1 && TotalsValue(text, "release_adv_park_latched") == 1,
               "T17 park counters: 1 park release, 1 latched call (park %ld, latched %ld)",
               TotalsValue(text, "release_adv_park"), TotalsValue(text, "release_adv_park_latched"));
-        sprintf(path, "%spathfix_capture_v42_release.csv", runDir);
+        sprintf(path, "%spathfix_capture_v43_release.csv", runDir);
         ReadText(path, text, sizeof(text));
         CHECK(strstr(text, "seq,timestamp_ms,thread_id,ctrl,unit,n,node,t,cursor_arc,path_end,nodes,max_width,narrow_runs,run,run_start,run_end,depth,D,D_new,P,A,applied,to_end,reason") != nullptr,
               "T15 release.csv header");

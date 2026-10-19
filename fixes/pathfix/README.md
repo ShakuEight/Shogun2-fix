@@ -8,7 +8,7 @@ corners on wider lines.
 | Build | Where | What |
 |---|---|---|
 | **Public release 1.0** | `release\Shogun2-PathFix-1.0\` at the repository root, built by `release.bat` | Variant G with the park release, always on. No keys, log, recording or crash handler, and only the five hooks G needs. Copy in to install, delete to uninstall. See section 7 |
-| **Dev build v42** | `build\dinput8.dll`, built by `build.bat` | I toggles G, P starts and stops a recording. Sections 1 to 6 describe it unless stated otherwise |
+| **Dev build v43** | `build\dinput8.dll`, built by `build.bat` | I toggles G (v43: with its yari wall part, section 3.10), P starts and stops a recording. Sections 1 to 6 describe it unless stated otherwise |
 
 How the fix was found is in [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -290,7 +290,7 @@ speed and are kept at those values, which is 3.6 game seconds per wall second.
 
 ### 3.9 Capture files
 
-Written into the run folder as `pathfix_capture_v42_<name>.csv` (runs recorded with v40 / v41
+Written into the run folder as `pathfix_capture_v43_<name>.csv` (runs recorded with v40 .. v42
 use those prefixes). Without a recording none of the buffers is allocated, and every recording
 path stops at one gate that is open only between the two P presses (or for the capture window
 in capture mode). The fix code runs before that gate in every handler, so G behaves the same
@@ -301,13 +301,63 @@ local research log (`docs/research/capture_format_v17.md` and the later section 
 | File | Content |
 |---|---|
 | `soldiers` | Per sampled soldier: position, slot, waypoint, speed fields, order type |
-| `orders` | One row per slot-laying call: cursor, leader index, ready byte |
+| `orders` | One row per slot-laying call: cursor, leader index, ready byte; v43: game tick, formation vtable and floats, yari wall ability, group count, requested width |
 | `gotos` | Go-to orders per soldier |
 | `builds`, `build_nodes` | Every path build with its node chain |
 | `fix`, `fixraw` | Corner fix decisions, raw side objects |
 | `radius` | Radius-lane assignments |
-| `release` | Every G advance call: plan, `D`, `P`, anchor, reason |
+| `release` | Every G advance call: plan, `D`, `P`, anchor, reason; v43: reason `yari_end`, `depth_kind` |
+| `yari` | v43: every decided yari wall slot call: width, files, ranks, block span, narrowest node, sharpest turn, laid by the block generator or not |
 | `events`, `cursor`, `units`, `totals`, `fix_totals` | Mode changes, markers, counters |
+
+### 3.10 Yari wall (v43)
+
+User report (2026-10-19, replay `yariwall_pathing`): a yari wall unit still paths badly through a
+gatehouse and round a sharp corner with G on; men wander off, the unit splits into two blobs and
+slows down. The yari wall is its own formation class (type 3, `docs/re/formation_types_x86.md`):
+
+- Its slot generator lays one straight grid at the block front, 1 m per file and per rank, with
+  the heading of the path piece there. The file count comes only from the requested width (the
+  player's drag), so the depth is whatever the player set. It never follows the path pieces and
+  never narrows a row to the passage, as the block's generator does.
+- Every slot skips the navmesh test, so every man is sent to his slot even when it lies behind a
+  building, and each man plans his own route there.
+
+v43 adds three things to G, all part of the I toggle (`PATHFIX_YARI=0` switches them off and
+leaves G exactly as v42):
+
+1. **Laid along the path where the wall does not fit.** An entry hook on the yari wall's slot
+   generator (0x103C5D30, only the call from the per-second slot laying) checks the block the
+   wall would lay: from the front back over its ranks. A path node narrower than the requested
+   width minus 1 m, or a turn of more than 30 degrees inside it, and the block's own generator
+   (`FUN_103c4720`) lays the slots instead, on the same object. On straight open ground the two
+   give the same grid. The choice is kept 3 game seconds. The final wall at the destination is
+   always the game's.
+2. **No end-gap anchor for a yari wall.** When a narrow run reaches the path end, G (v40) puts
+   the front 2 m before the end at once. For a yari wall that laid the whole straight wall at a
+   corridor exit while the unit was still at the gatehouse, and men whose slots were nearer by a
+   parallel passage went that way. A yari wall keeps the game's front in that case. Release past
+   a narrow run, the hold and the park release are unchanged.
+3. **Block depth from the wall's own files.** G's anchor beyond a narrow run uses the block depth;
+   for a yari wall it is ceil(men / files) x 1 m, from the wall's own files for the widest node.
+
+Measured on the replay (two 150-man yari units, drag widths 10 to 31 m, 5 to 15 ranks; autorun at
+speed 1; `analysis/yariwall_passes.py` and `yariwall_summary.py`, local; passes of both yari units
+from game tick 860, when the recording switched G on):
+
+| Run | Split (s, summed) | Most strays in a pass | Spread p90 (m, mean) | Median speed (m/s) |
+|---|---|---|---|---|
+| Fix off | 13.9 | 47 | 18.5 | 2.27 |
+| G as v42 (the recording, in sync) | 27.6 | 33 | 18.0 | 2.91 |
+| G as v42, on all battle | 27.8 | 37 | 18.3 | 2.82 |
+| v43, the recording's I schedule | 0.0 | 1 | 10.2 | 2.29 |
+| v43, on all battle | 0.0 | 0 | 10.4 | 2.69 |
+
+Split = seconds with the men in two or more groups of at least 15 % (4 m single linkage); stray =
+a man more than 15 m from the largest group. In the corridor pass of the worse unit the split went
+from 13 s to 0 and the strays from 31..37 to 0..1; in the hairpin pass that follows, 90 % of the
+men were in their slots after 20 s instead of 25..34 s. Every run except the in-sync one desyncs
+from the recording at its first change, so their battles differ in detail.
 
 ---
 
@@ -325,7 +375,7 @@ cmd /c test.bat       -> offline harness, six runs
 maps the real DLL, loads the proxy, and drives the hooks through the game's own helper functions
 on fake soldiers, portals and path nodes. It passes when:
 
-- the full run passes 134 of 134 checks, twice. It runs in capture mode, selects C and RC
+- the full run passes 136 of 136 checks, twice. It runs in capture mode, selects C and RC
   through a harness-only export to check G's parts on their own, and switches G with the
   real I key. The park release scenario (PR1 to PR7, T17, T18) is part of it;
 - the geometry-disable run passes 32 of 32;
@@ -335,6 +385,11 @@ on fake soldiers, portals and path nodes. It passes when:
 - the recording run passes 18 of 18: P on / off twice gives two folders, the second starting
   empty, each with its own log; a recording still on when the game closes is written; log
   lines carry the local time;
+- the yari run (v43) passes 27 of 27: `PATHFIX_TOGGLE_TICKS` flips G on and off by game tick; a
+  fake yari wall object (the real type 3 vtable) is laid through the real slot call site with
+  both game generators stubbed to report which one ran (clean span, narrow node, kept, expired,
+  bend, final wall, no plan, other object, other call site, fix off), the yari depth in G's
+  anchor and the end-gap anchor left to the game;
 - the crash run dies on a deliberate access violation and leaves `crash.dmp` in its run folder.
 
 CMake options: `FIX_PATHFIX` (default ON) and `BUILD_TESTS` (default ON).
@@ -348,7 +403,7 @@ reference it uses are shared with the other fixes and live at the repository roo
 
 | Path | Content |
 |---|---|
-| `src/pathfix.cpp` | Dev build v42: the whole fix and its recording (P toggled, or the capture mode with `PATHFIX_CAPTURE=1`). The header comment keeps every version's notes back to v37 |
+| `src/pathfix.cpp` | Dev build v43: the whole fix and its recording (P toggled, or the capture mode with `PATHFIX_CAPTURE=1`). The header comment keeps every version's notes back to v37 |
 | `src/stack_offsets_v16.h`, `_v17.h`, `_v34.h` | Hook context offsets generated by `tools/re/stack_calc.py` |
 | `release/pathfix_release.cpp` | The public release: variant G always on, five hooks, nothing else |
 | `release/version.rc`, `release/README.txt` | Version resource and the readme for players |
@@ -377,6 +432,9 @@ reference it uses are shared with the other fixes and live at the repository roo
   user accepted it in game, but no recording of the fixed replay has been analysed. A leader parked with more than D + block depth + 3 m of path left
   is deliberately not released early (formation moves do not pathfind), so such a unit can
   still finish short of its destination layout.
+- **Yari wall (v43) tested on one replay.** The rules were checked on two yari units of one
+  battle (one gatehouse, one long corridor, one hairpin), not yet live. Other special
+  formations (square, wedge and the rest) keep their own slot generators and are untouched.
 - **Original 32-bit game only, single player only.**
 
 ---
@@ -393,7 +451,7 @@ reference it uses are shared with the other fixes and live at the repository roo
    root with `dinput8.dll`, `README.txt`, `SHA256.txt`, `LICENSE` and `NOTICE`, and zips it. An older package of the same version is moved to
    `release\_previous\`.
 
-| | Dev build v42 | Public release 1.0 |
+| | Dev build v43 | Public release 1.0 (G as in v42, no yari wall part) |
 |---|---|---|
 | Source | `fixes/pathfix/src/pathfix.cpp` | `fixes/pathfix/release/pathfix_release.cpp` |
 | Fix | off at launch, I toggles G | G always on |

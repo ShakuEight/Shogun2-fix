@@ -6,7 +6,7 @@ Runtime fixes for Total War: Shogun 2 (the original 32-bit `Empire.Retail.dll`),
 
 | Fix | Folder | State |
 |---|---|---|
-| pathfix: formation through gates, doorways, corners | `fixes/pathfix/` | public release 1.0, dev build v42 |
+| pathfix: formation through gates, doorways, corners | `fixes/pathfix/` | public release 1.0, dev build v43 (2026-10-19: yari wall laid along the path, no end-gap anchor for a yari wall) |
 | artillery-targeting-fix (code name artfix, was aimfix): artillery aims at the middle of the target unit | `fixes/artillery-targeting-fix/` | dev build (2026-10-18), no release |
 | fire-by-rank-fix (code name fbrfix): matchlock target acquisition, fire by rank, Hattori / Ikko Ikki reload | `fixes/fire-by-rank-fix/` | dev build (2026-10-18: every rank, front rank first, 75 % quorum, early reload), no release |
 | siege-responsiveness-fix (code name siegefix): defending units answer move orders during wall assaults | `fixes/siege-responsiveness-fix/` | dev build (2026-10-18: queue's own node budget 2000, local player's path requests searched at once), no release |

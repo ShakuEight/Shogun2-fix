@@ -1,3 +1,45 @@
+// pathfix.cpp -- dev build v43: variant G + yari wall laid along the path (2026-10-19)
+//
+// v43 (user report 2026-10-19, replay yariwall_pathing: a yari wall unit through a gatehouse and
+// round a sharp corner wanders, splits into two blobs and slows down; fix off worse, G a bit
+// better, still bad). The yari wall is formation type 3 ("pike wall", ability 6), vtable
+// 0x115E0760, built on the block formation's object with its own slot generator at 0x103C5D30
+// (slot 9). Decoded (docs/re/formation_types_x86.md): that generator lays ONE straight grid at
+// the block front, with the heading of the path piece there: files = round(W + 0.001 - f) + 1
+// at 1 m (W = the requested width, i.e. the player's drag, so the player sets the depth), ranks
+// = men / files at 1 m behind the front, every slot flagged "no navmesh test". It never walks
+// the path pieces and never clamps a row to the node width, so at a gate or a corner its slots
+// lie in walls and behind buildings and the men route round both sides. The block generator
+// FUN_103c4720 run on the same object gives the same grid on straight open ground (same file
+// count, the object's file and row spacing are 1.0) but lays the rows along the path pieces with
+// files clamped to the node width.
+// - Variant G + Y (mode 10, PATHFIX_YARI=0 turns Y off): entry hook on 0x103C5D30 (stolen
+//   SUB ESP,0x84), only the call from FUN_101bc880 (return 0x101BC9FB). When the block the yari
+//   wall would lay (front = cursor + D as the advance hook left it, depth = (ranks - 1) m from
+//   the object's own file count for W) overlaps a path node narrower than W - 1 m or a bend of
+//   more than 30 degrees, the block generator lays the slots instead (the hook calls
+//   FUN_103c4720 with the same arguments and returns); kept 3 game s after the last such call on
+//   the same path; at the path end (the final wall) always the game's own. G's block depth uses
+//   the yari wall's own file count and 1 m rows for type 3 units (constants for the others).
+// - Y3 (runs 20261019_135707 .. 142149, the user's battle: a yari unit up a long corridor that ends
+//   at the destination): G's end-gap anchor (v40: a narrow run that reaches the path end puts the
+//   front 2 m before the end) lays the whole straight wall at the corridor exit while the unit is
+//   still at the gatehouse; each man then routes to his slot on his own, and those whose slots lie
+//   on the far side went up a parallel passage (the second blob; 31..37 strays, 13 s split with G,
+//   none with the fix off). For a yari wall that anchor is not applied (release.csv reason
+//   yari_end, the game's front kept); past_run anchors, holds and the park release are unchanged.
+//   With PATHFIX_YARI=0 all of Y is off and G is exactly v42's.
+
+// - Capture: orders.csv adds gtick, form_vt (RVA of the formation vtable [unit+0x624]),
+//   form_f0..f3 (+0x08..+0x14), form_x1c (+0x1C, type 3's file offset), yari (ability 6 of the
+//   army unit [unit+0x510]+0xED4), groups ([army+0xB8C]) and req_width ([[ctrl+0x18]+0x6C]);
+//   new yari.csv (one row per decided slot call); release.csv adds depth_kind; events.csv gets
+//   rows from a new event hook on the formation change handler FUN_1014e870 (stolen PUSH ECX;
+//   PUSH EBX; MOV BL,[ESP+0x10]; ECX = the army unit). CSV prefix v43.
+// - PATHFIX_TOGGLE_TICKS=t1,t2,... (dev): the fix flips (as the I key) when the game tick passes
+//   each value, so a replay recorded with I presses can be played back in sync.
+//
+// --- v42 header follows ---
 // pathfix.cpp -- dev build v42: variant G + park release, I toggles the path fix, P toggles a recording (2026-10-17)
 //
 // v42 (runs 20261017_104106 and 20261017_114804, a replay of four 200-man units sent through
@@ -17,7 +59,7 @@
 //   the end and stays there (latched) until a new order or a new path. Rows reason "park",
 //   counters release_adv_park / release_adv_park_latched.
 // - Recording in play: P starts a recording into a new folder pathfix_runs\<date_time>\ (CSV
-//   files as v41's capture, named pathfix_capture_v42_*, and a pathfix_log.txt copy of the
+//   files as v41's capture, named pathfix_capture_v43_*, and a pathfix_log.txt copy of the
 //   session log while it runs), P stops it; any number per session. Capture buffers are
 //   allocated at the first P. Tones: three rising notes = recording on, three falling = off,
 //   three long low tones = refused. O marks a moment while recording. PATHFIX_CAPTURE=1
@@ -102,7 +144,7 @@
 // field (3.14 s) is untouched, so every man's slot is far away and the pacing
 // law gives running speed through the choke; the formation re-forms beyond it
 // and then follows the leader as before. Open ground: no narrow node, nothing
-// changes. Rows: pathfix_capture_v42_release.csv (one per G advance call in
+// changes. Rows: pathfix_capture_v43_release.csv (one per G advance call in
 // the window); counters release_* in fix_totals.csv.
 //
 // --- v37 header follows ---
@@ -198,7 +240,7 @@
 //   than 1.3 * n / 3 of the queue, he moves to the ADJACENT lane with fewer
 //   men (never two lanes away: no crossing). w = w0 + k * 1.5 m, at most
 //   4.2 m, never below w0. Stuck release (FixStuckHold) -> w0.
-// Rows: pathfix_capture_v42_radius.csv (5 / s per man); counters radius_*.
+// Rows: pathfix_capture_v43_radius.csv (5 / s per man); counters radius_*.
 //
 // --- v33 header follows ---
 // hooks_v33.cpp -- variant L: look-ahead avoidance (Phase 20)
@@ -233,7 +275,7 @@
 //     oncoming blocker: pass clockwise (negative angle), both men alike;
 //   - wall memory: turned last tick but moved < 40 % of the turned D: that
 //     side is blocked for 1 s.
-// Rows: pathfix_capture_v42_avoid.csv (5 / s per man, window only);
+// Rows: pathfix_capture_v43_avoid.csv (5 / s per man, window only);
 // counters avoid_* in fix_totals.csv.
 //
 // --- v31 header follows ---
@@ -377,7 +419,7 @@
 //     test: the game's hard collision slides along walls (the offline model,
 //     sim/steer.py "H corner nowall", gave the same result as with one).
 //   Model: sim/run_gate2.py on the gatehouse ramp (docs/ghidra_analysis_v12.md
-//   section Q). Totals: steer_* rows in pathfix_capture_v42_fix_totals.csv.
+//   section Q). Totals: steer_* rows in pathfix_capture_v43_fix_totals.csv.
 //
 // --- v23 header follows ---
 // hooks_v23.cpp -- "lead the turn" corner rule (Phase 15)
@@ -502,7 +544,7 @@
 //   watchpoint key is gone; the watchpoint stays off). Disabling, and every
 //   refused key, sounds an alarm of three long low beeps.
 //   Capture: fix rows carry type, mA, mB, E+0x30, pA, pB, L; the first 64
-//   distinct apex portals are dumped raw (pathfix_capture_v42_fixraw.csv);
+//   distinct apex portals are dumped raw (pathfix_capture_v43_fixraw.csv);
 //   soldier samples are also taken from FUN_101bc880 and the fix hook, so a
 //   unit is sampled even when FUN_101a9750 is silent (R1 of run 22:19).
 //
@@ -512,7 +554,7 @@
 //
 // Phase 12 (docs/PHASE12_fix_plan.md). Built on hooks_v16.cpp; everything of
 // v16 is kept except the width override presets (removed; F6 now switches the
-// fix) and the file names (pathfix_capture_v42_*).
+// fix) and the file names (pathfix_capture_v43_*).
 //
 //   Fix: a mid-function patch at 0x103df6c0 (FUN_103df3f0, the instruction
 //   after CALL FUN_10394e80; stolen CMP byte ptr [EBX+0x471],1, 7 bytes).
@@ -532,7 +574,7 @@
 //   Live self-checks (frame: EAX == ESP+0x44 on every call; portal geometry
 //   and apex match on the first 200 apex calls) switch the fix off for the
 //   session when they fail ("FIX DISABLED" in the log).
-//   Capture: pathfix_capture_v42_fix.csv (one row per apex call, at most
+//   Capture: pathfix_capture_v43_fix.csv (one row per apex call, at most
 //   10 Hz per soldier, while the window is open), fix_totals.csv, FIXMODE
 //   rows in the events file, and soldiers.csv gains s_corridor = [R+0x0C]
 //   and s_radius = [R+0x50] (R = [s+0x3CC]).
@@ -686,6 +728,8 @@ enum {
     H_STEER,           // FUN_10367600 (per-tick integrator, v24 steering)
     H_RADIUS,          // 0x103df4d1 in FUN_103df3f0 (replan request radius, v34 R)
     H_ADVANCE,         // FUN_103670a0 entry (cursor advance before the slot layout, v38 G)
+    H_FORMCHG,         // FUN_1014e870 entry (formation change handler, v43 event only)
+    H_YARI,            // 0x103c5d30 entry (yari wall slot generator, v43 Y; answers for the game)
     HOOK_COUNT
 };
 static const uint8_t HOOK_MARKER = 0xFF;
@@ -742,6 +786,11 @@ static const HookDef g_hookDefs[HOOK_COUNT] = {
     // SUB ESP,0x10; PUSH ESI; PUSH EDI; RELOCATABLE yes, no branch into the range).
     { "FUN_103670a0", "cursor advance (v38 G release)", 0x3670A0, 5,
       { 0x83, 0xEC, 0x10, 0x56, 0x57 }, -1 },
+    // v43 (docs/re/prologues_v43.txt from tools/dump_prologue.py: RELOCATABLE yes, no branch in).
+    { "FUN_1014e870", "formation change (v43 event)", 0x14E870, 6,
+      { 0x51, 0x53, 0x8A, 0x5C, 0x24, 0x10 }, -1 },                       // PUSH ECX; PUSH EBX; MOV BL,[ESP+0x10]
+    { "FUN_103c5d30", "yari wall slot generator (v43 Y)", 0x3C5D30, 6,
+      { 0x81, 0xEC, 0x84, 0x00, 0x00, 0x00 }, -1 },                       // SUB ESP,0x84 (no function in s2x86)
 };
 
 static HookSlot g_hookSlots[HOOK_COUNT] = {};
@@ -980,7 +1029,7 @@ static volatile LONG g_watchStale = 0;       // traps on a previous address of a
 
 static uint32_t g_textStart = 0, g_textEnd = 0;   // absolute .text bounds
 
-// Slot (re)assignments, written to pathfix_capture_v42_slots.csv.
+// Slot (re)assignments, written to pathfix_capture_v43_slots.csv.
 enum { SLOT_ASSIGN = 1, SLOT_NODE_CHANGE = 2, SLOT_TAKEOVER = 3 };
 struct SlotEvent {
     volatile LONG valid;
@@ -1069,7 +1118,7 @@ static volatile LONG g_watchIdx = 0;
 static volatile LONG g_watchOverflow = 0;
 static volatile LONG g_watchForeign = 0;     // single-steps with a foreign Dr6 bit
 
-// Sweep statistics, written to pathfix_capture_v42_sweeps.csv.
+// Sweep statistics, written to pathfix_capture_v43_sweeps.csv.
 struct SweepStat {
     volatile LONG valid;       // v16: set last (incremental writer)
     uint32_t timestamp;
@@ -2054,6 +2103,14 @@ struct OrderRecord {
     uint32_t leaderIdx;        // v37: [ctrl+0x30], the soldier whose path projection is the unit cursor
     uint32_t ready;            // v37: byte [ctrl+0x0C], all soldiers ready (FUN_103cbe40)
     uint32_t speedMode;        // v37: [ctrl+0x24], speed mode passed to FUN_1018b310 (0 walk, 1 run, 2 charge)
+    // v43: formation of the unit (FormRead)
+    uint32_t gtick;            // game tick at the call (0 = clock unknown)
+    uint32_t formVt;           // vtable of [unit+0x624] as an RVA (0 = unreadable)
+    float    formF[4];         // formation object +0x08..+0x14
+    float    formX1c;          // +0x1C (type 3: file offset f, copy of f0)
+    int32_t  yari;             // ability 6 of the army unit: 1 on, 0 off, -1 unreadable
+    int32_t  groups;           // [[unit+0x510]+0xB8C], -1 unreadable
+    float    reqWidth;         // [[ctrl+0x18]+0x6C], the width passed to the slot generator
 };
 
 enum { GOTO_GOTO = 1, GOTO_OFFMESH = 2 };
@@ -2166,6 +2223,51 @@ static void SoldierSampleUnit(uint32_t unit, uint32_t ctrl, DWORD now, DWORD ela
 
 static void GPlan(uint32_t ctrl, uint32_t unit, uint32_t n, DWORD now);   // v38 G (defined with AdvanceHit)
 
+// v43: the unit's formation object and the yari wall ability (docs/re/formation_types_x86.md).
+// Formation object [unit+0x624] (FUN_101bc880 takes it from [ctrl+4]); type by vtable; the army
+// unit [unit+0x510] holds the ability set at +0xED4 (vtable slot +4 = test, id 6 = yari wall,
+// the same test as FUN_103d0470 and zombiefix's YariOn) and the group count at +0xB8C. Game
+// thread only (the ability test calls game code).
+static const uint32_t FORM_VT_BLOCK_RVA = 0x15E05E0;      // type 0 block_formation
+static const uint32_t FORM_VT_PIKEWALL_RVA = 0x15E0760;   // type 3 pike_wall_fomation (yari wall)
+static const int      FORM_ABILITY_YARI = 6;
+typedef uint32_t (__fastcall* AbilityTestFn)(uint32_t self, uint32_t edx, uint32_t id);
+
+static bool InModule(uint32_t a) { return a >= g_moduleBaseVal && a - g_moduleBaseVal < g_moduleSize; }
+
+static uint32_t FormObject(uint32_t unit, uint32_t* vtRva) {
+    uint32_t obj = 0, vt = 0;
+    *vtRva = 0;
+    if (!ReadDword(unit + 0x624, &obj) || !PtrPlausible(obj) || !ReadDword(obj, &vt) || !InModule(vt)) return 0;
+    *vtRva = vt - g_moduleBaseVal;
+    return obj;
+}
+
+static int FormYari(uint32_t unit) {
+    uint32_t army = 0, vt = 0, fn = 0;
+    if (!ReadDword(unit + 0x510, &army) || !PtrPlausible(army)) return -1;
+    uint32_t set = army + 0xED4;
+    if (!ReadDword(set, &vt) || !PtrPlausible(vt) || !ReadDword(vt + 4, &fn) || !InModule(fn)) return -1;   // the test must be game code
+    __try { return (int)(((AbilityTestFn)fn)(set, 0, FORM_ABILITY_YARI) & 0xFF) ? 1 : 0; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return -1; }
+}
+
+static void FormRead(OrderRecord& r) {
+    r.formVt = 0; r.formF[0] = r.formF[1] = r.formF[2] = r.formF[3] = 0.0f; r.formX1c = 0.0f;
+    r.yari = -1; r.groups = -1; r.reqWidth = 0.0f;
+    uint32_t vt = 0, obj = FormObject(r.unit, &vt);
+    if (obj) {
+        r.formVt = vt;
+        MemcpyTry(r.formF, obj + 0x08, 16);
+        MemcpyTry(&r.formX1c, obj + 0x1C, 4);
+    }
+    r.yari = FormYari(r.unit);
+    uint32_t army = 0, g = 0, p = 0;
+    if (ReadDword(r.unit + 0x510, &army) && PtrPlausible(army) && ReadDword(army + 0xB8C, &g) && g < 1000)
+        r.groups = (int32_t)g;
+    if (ReadDword(r.ctrl + 0x18, &p) && PtrPlausible(p)) MemcpyTry(&r.reqWidth, p + 0x6C, 4);
+}
+
 static void OrdersHit(const uint8_t* ctx) {
     DWORD now = GetTickCount();
     DWORD elapsed = 0;
@@ -2211,6 +2313,8 @@ static void OrdersHit(const uint8_t* ctx) {
     ReadDword(r.ctrl + 0x30, &r.leaderIdx);
     { uint8_t rb = 0xFF; if (MemcpyTry(&rb, r.ctrl + 0x0C, 1)) r.ready = rb; }
     ReadDword(r.ctrl + 0x24, &r.speedMode);
+    { uint32_t obj = (uint32_t)g_gtClock, tick = 0; r.gtick = obj && ReadDword(obj + 0x50, &tick) ? tick : 0; }   // v43
+    FormRead(r);   // v43
     if (listOk) {
         LONG start = InterlockedExchangeAdd(&g_poolIdx, (LONG)n);
         if (start + (LONG)n <= POOL_SIZE) {
@@ -3563,6 +3667,24 @@ static void FixKeyF6(DWORD elapsed) {
     FixBeep(on ? 1 : 0);
 }
 
+// v43: PATHFIX_TOGGLE_TICKS=t1,t2,... flips the fix (as the I key) when the game tick passes each
+// value in turn, so a replay recorded with I presses plays back with the same fix states. Polled
+// on the 50 ms key loop; the tick is read from the clock object found by the orders hook.
+static const int TOGGLE_MAX = 16;
+static uint32_t g_togTicks[TOGGLE_MAX] = {};
+static int g_togN = 0, g_togNext = 0;
+
+static void TogglePoll(DWORD elapsed) {
+    if (g_togNext >= g_togN) return;
+    uint32_t obj = (uint32_t)g_gtClock, tick = 0;
+    if (!obj || !ReadDword(obj + 0x50, &tick)) return;
+    if (tick < g_togTicks[g_togNext]) return;
+    uint32_t want = g_togTicks[g_togNext++];
+    FixKeyF6(elapsed);
+    Log("PATHFIX_TOGGLE_TICKS: flip %d of %d at tick %u (scheduled %u) -> path fix %s", g_togNext, g_togN, tick, want,
+        g_fixMode == FIX_V38_G ? "ON" : "OFF");
+}
+
 // Offline harness only (the game never calls it): select variant 0 off, 1 C, 2 RC or 3 G
 // directly, as the v38..v40 I cycle did, so the parts G is built from can be checked alone.
 extern "C" __declspec(dllexport) void __stdcall PathfixTestVariant(LONG var) {
@@ -4178,6 +4300,30 @@ static const float G_END_GAP_M = 2.0f;              // v40: the anchor stays thi
 static const int   G_HOLDS = 64;                    // v39: controllers with a held anchor
 static const float G_PARK_PAST_M = 0.5f;            // v42: the park release lays the front this far past the path end
 
+// v43 Y constants (YariHit)
+static const uint32_t Y_CALL_SITE_RVA = 0x1BC9FB;   // return address of CALL [ESI+0x24] (slot 9) at 0x101BC9F8
+static const uint32_t Y_BLOCK_GEN_RVA = 0x3C4720;   // FUN_103c4720, the block formation's slot generator
+static uint32_t g_yCallSite = 0;                    // rebased at install
+static const float Y_SLACK_M = 1.0f;                // a node narrower than W - this is clamped by an obstacle
+static const float Y_BEND_DEG = 30.0f;              // heading change between two nodes inside the block
+static const float Y_BACK_M = 1.0f;                 // the span reaches this far behind the last rank
+static const float Y_AHEAD_M = 1.0f;                // and this far ahead of the front
+static const float Y_ROW_M = 1.0f;                  // yari wall row and file spacing (unit vectors, 0x103C5D30)
+static const float Y_END_M = 0.05f;                 // front within this of the path end = the final wall
+static const DWORD Y_KEEP_MS = 3000;                // game ms the block layout is kept after the last bad span
+static volatile LONG g_yOn = 1;                     // PATHFIX_YARI=0 turns Y off (G otherwise unchanged)
+typedef uint32_t (__fastcall* FilesForWidthFn)(uint32_t ecx, uint32_t edx, float w, uint32_t men);
+typedef uint32_t (__fastcall* SlotGenFn)(uint32_t ecx, uint32_t edx, uint32_t out, uint32_t target, float w, uint32_t men);
+
+// Files of a yari wall for width w and n men: the object's own vtable slot +0x10 (0x103CE970:
+// round((w + 0.001 - [obj+0x1C]) / 1.0) + 1, at most n). 0 on a bad object or a fault.
+static uint32_t YariFiles(uint32_t obj, float w, uint32_t n) {
+    uint32_t vt = 0, fn = 0;
+    if (!ReadDword(obj, &vt) || !InModule(vt) || !ReadDword(vt + 0x10, &fn) || !InModule(fn)) return 0;
+    __try { return ((FilesForWidthFn)fn)(obj, 0, w, n); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
 static void FixInstallLog() {
     Log("  Fix:         corner waypoint fix at RVA 0x3DF6C0, OFF at launch (I cycles off / C / RC / G)");
     Log("  v38 G:       mode 10 = RC + release beyond the choke. Orders hook walks the unit path from ctrl+0x34 "
@@ -4195,6 +4341,18 @@ static void FixInstallLog() {
         "(s+0x384 == 1, s+0x308 == 1), no narrow run ahead and at most D + block depth + %.1f m of path left, the front "
         "goes %.1f m past the path end (the game's own release) and stays there until a new order or a new path",
         G_MARGIN_M, G_PARK_PAST_M);
+    Log("  v43 Y:       yari wall (formation vtable RVA 0x%06X) laid along the path: entry hook on its slot generator "
+        "0x3C5D30, only the call from FUN_101bc880 (return 0x%08X); block = front (cursor + D after the advance hook) "
+        "back (ranks - 1) x %.1f m (files from the object's own slot +0x10 for the width W) - %.1f m .. front + %.1f m; "
+        "a node narrower than W - %.1f m or a turn > %.0f deg in it -> the block generator FUN_103c4720 lays the slots "
+        "(kept %lu game ms on the same path); front within %.2f m of the path end = the game's final wall; G's block "
+        "depth for a yari wall = ceil(n / files(widest node)) x %.1f m. Y3: no end-gap anchor for a yari wall (a narrow run "
+        "that reaches the path end keeps the game's front). %s",
+        FORM_VT_PIKEWALL_RVA, g_yCallSite, Y_ROW_M, Y_BACK_M, Y_AHEAD_M, Y_SLACK_M, Y_BEND_DEG,
+        (unsigned long)Y_KEEP_MS, Y_END_M, Y_ROW_M, g_yOn ? "ON with G" : "OFF (PATHFIX_YARI=0)");
+    Log("  v43 capture: orders rows add gtick, form_vt, form_f0..f3, form_x1c, yari (ability %d of [unit+0x510]+0xED4), "
+        "groups, req_width; yari.csv one row per decided slot call; release rows add depth_kind; events from the "
+        "formation change handler FUN_1014e870 (ECX = army unit)", FORM_ABILITY_YARI);
     Log("  v37 capture:soldier rows add spd_max e+0x110, spd_cur +0x130, spd_tgt +0x150, spd_cmd +0x1AC, spd_mul +0x1BC, "
         "ord_spd +0x438, ord_t +0x43C, ord_mode +0x440, elapsed +0x46C, moving +0xF0, direct +0x198, f384, f308; "
         "order rows add leader_idx [ctrl+0x30], ready [ctrl+0x0C], speed_mode [ctrl+0x24]");
@@ -4218,7 +4376,7 @@ static void FixInstallLog() {
         "Moussaid cost, |D| kept, side held %lu ms, oncoming -> clockwise, wall memory %lu ms",
         (unsigned long)AV_WP_MS, AV_STALL_MPS, AV_OTHER_UNITS ? "included" : "excluded", AV_H_M,
         (unsigned long)AV_HOLD_MS, (unsigned long)AV_WALL_MS);
-    Log("               unit snapshots every %.0f ms (%s); rows: pathfix_capture_v42_avoid.csv, %lu per s per man",
+    Log("               unit snapshots every %.0f ms (%s); rows: pathfix_capture_v43_avoid.csv, %lu per s per man",
         AV_SNAP_MS, g_avUnits ? "table allocated" : "TABLE MISSING, avoidance inert",
         (unsigned long)(1000 / AV_ROW_MS));
     Log("  Variants:    C mode 4 = lead the turn within %.0f m + no damping within %.0f m; D mode 5 = C + gather "
@@ -4233,7 +4391,7 @@ static void FixInstallLog() {
     Log("               self-checks: frame on every call; geometry (> %d permille) and apex match "
         "(> %d permille) on the first %d type-0 apex calls; ALARM (three long low tones) when disabled",
         FIX_GEO_PERMILLE, FIX_MATCH_PERMILLE, FIX_CHECK_CALLS);
-    Log("               rows: pathfix_capture_v42_fix.csv, at most %d per s per soldier, window only; "
+    Log("               rows: pathfix_capture_v43_fix.csv, at most %d per s per soldier, window only; "
         "%d rows max; raw dump of the first %d apex side objects (fixraw.csv)",
         (int)(1000 / FIX_ROW_MS), FIXREC_SIZE, FIXRAW_SIZE);
     Log("  Steering:    v25 on the integrator FUN_10367600 while the fix is on: corner men within %.0f m of the "
@@ -4500,9 +4658,17 @@ struct GPending {
     float    runs[G_MAX_RUNS][2];   // [start, end) arc lengths of the narrow runs
     uint8_t  newOrder;          // v39: leader index ctrl+0x30 was 0 (first laying call after an order)
     uint8_t  leaderParked;      // v42: the leader has arrived at his slot (s+0x384 == 1 and s+0x308 == 1)
-    uint8_t  pad[2];
+    uint8_t  depthKind;         // v43: 0 constants (G_FILE_M / G_ROW_M), 1 yari wall (own files, 1 m rows)
+    uint8_t  pad;
+    // v43 Y: node geometry of this walk (arc start, length, width = min(w74, w78), unit direction)
+    // and the block front the advance hook left (arc length s0 + final D) for the slot hook
+    int32_t  gnn;
+    float    nStart[G_MAX_NODES], nLen[G_MAX_NODES], nWid[G_MAX_NODES], nDir[G_MAX_NODES][2];
+    float    front;
+    volatile LONG frontStamp;   // GetTickCount when front was set (0 = consumed / none)
 };
 static GPending g_gp[G_PENDING] = {};
+
 
 // v39: per-controller anchor hold; v42: anchor applied on this path / park release latched
 struct GHold {
@@ -4514,6 +4680,7 @@ struct GHold {
     uint8_t  anchored;          // v42: a release anchor was applied since the last order / new path
     uint8_t  latched;           // v42: the park release fired; the front stays past the path end
     uint8_t  pad;
+    DWORD    yBad;              // v43 Y: GameNow of the last slot call with a bad span on this path (0 none)
 };
 static GHold g_gh[G_HOLDS] = {};
 static volatile LONG g_gAdvHeld = 0, g_gAdvHoldEnd = 0, g_gHoldReset = 0, g_gAdvPark = 0, g_gAdvParkLatched = 0;
@@ -4523,14 +4690,14 @@ static GHold* GHoldFor(uint32_t ctrl) {
         if ((uint32_t)g_gh[i].ctrl == ctrl) return &g_gh[i];
     for (int i = 0; i < G_HOLDS; i++)
         if (InterlockedCompareExchange(&g_gh[i].ctrl, (LONG)ctrl, 0) == 0) {
-            g_gh[i].stamp = 0; g_gh[i].active = 0; g_gh[i].anchored = 0; g_gh[i].latched = 0;
+            g_gh[i].stamp = 0; g_gh[i].active = 0; g_gh[i].anchored = 0; g_gh[i].latched = 0; g_gh[i].yBad = 0;
             return &g_gh[i];
         }
     GHold* oldest = &g_gh[0];
     for (int i = 1; i < G_HOLDS; i++)
         if (g_gh[i].stamp < oldest->stamp) oldest = &g_gh[i];
     InterlockedExchange(&oldest->ctrl, (LONG)ctrl);
-    oldest->stamp = 0; oldest->active = 0; oldest->anchored = 0; oldest->latched = 0;
+    oldest->stamp = 0; oldest->active = 0; oldest->anchored = 0; oldest->latched = 0; oldest->yBad = 0;
     return oldest;
 }
 
@@ -4539,7 +4706,7 @@ struct ReleaseRecord {
     uint32_t seq, timestamp, threadId, ctrl, unit, n, node;
     float    t, s0, pathEnd, wmax, depth, D, Dp, P, A, runStart, runEnd;
     int32_t  nNodes, nRuns, run;
-    uint8_t  applied, toEnd, reason, pad;   // reason 0 vanilla, 1 past_run, 2 end_gap, 3 hold, 4 park (v42)
+    uint8_t  applied, toEnd, reason, depthKind;   // reason 0 vanilla, 1 past_run, 2 end_gap, 3 hold, 4 park (v42); depthKind v43
 };
 static const int RELREC_SIZE = 16 * 1024;
 static ReleaseRecord* g_relRecs = nullptr;
@@ -4547,6 +4714,10 @@ static volatile LONG g_relRecIdx = 0, g_relRecOverflow = 0;
 static volatile LONG g_gPlanCalls = 0, g_gPlanBadCursor = 0, g_gPlanWalkFail = 0, g_gPlanNoWide = 0,
     g_gPlanNoRuns = 0, g_gPlanWithRuns = 0, g_gPlanNodesSum = 0, g_gAdvCalls = 0, g_gAdvOtherSite = 0,
     g_gAdvNoPlan = 0, g_gAdvMismatch = 0, g_gAdvVanilla = 0, g_gAdvApplied = 0, g_gAdvToEnd = 0, g_gAdvNotFarther = 0;
+// v43 Y counters
+static volatile LONG g_gPlanYariDepth = 0, g_yCalls = 0, g_yOff = 0, g_yOtherSite = 0, g_yNoPlan = 0, g_yMismatch = 0,
+    g_yNoFiles = 0, g_yEnd = 0, g_yClean = 0, g_ySubNarrow = 0, g_ySubBend = 0, g_ySubKept = 0, g_yFaults = 0,
+    g_yNoEndGap = 0;
 
 static GPending* GPendingFind(DWORD tid) {
     for (int i = 0; i < G_PENDING; i++)
@@ -4571,6 +4742,8 @@ static void GPlan(uint32_t ctrl, uint32_t unit, uint32_t n, DWORD now) {
     InterlockedIncrement(&g_gPlanCalls);
     GPending* gp = GPendingSlot(GetCurrentThreadId());
     InterlockedExchange(&gp->stamp, 0);
+    InterlockedExchange(&gp->frontStamp, 0);   // v43
+    gp->gnn = 0;
     uint32_t node = 0;
     float t = 0.0f;
     if (!ReadDword(ctrl + 0x34, &node) || !MemcpyTry(&t, ctrl + 0x38, 4) || !PtrPlausible(node) || !_finite(t)) {
@@ -4597,6 +4770,9 @@ static void GPlan(uint32_t ctrl, uint32_t unit, uint32_t n, DWORD now) {
         float wm = w74 < w78 ? w78 : w74;
         if (w < 0.0f) w = 0.0f;
         visited[nn] = cur; start[nn] = arc; len[nn] = L; wid[nn] = w;
+        gp->nStart[nn] = arc; gp->nLen[nn] = L; gp->nWid[nn] = w;   // v43 Y
+        gp->nDir[nn][0] = L > 0.01f ? (f[2] - f[0]) / L : 0.0f;
+        gp->nDir[nn][1] = L > 0.01f ? (f[3] - f[1]) / L : 0.0f;
         if (nn == 0) {
             float tc = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
             s0 = arc + tc * L;
@@ -4607,6 +4783,7 @@ static void GPlan(uint32_t ctrl, uint32_t unit, uint32_t n, DWORD now) {
         cur = next;
     }
     if (fail || nn == 0) { InterlockedIncrement(&g_gPlanWalkFail); return; }
+    gp->gnn = nn;   // v43
     InterlockedExchangeAdd(&g_gPlanNodesSum, nn);
     gp->ctrl = ctrl; gp->unit = unit; gp->node = node; gp->n = n; gp->t = t;
     gp->s0 = s0; gp->pathEnd = arc; gp->wmax = wmax; gp->nNodes = nn; gp->nRuns = 0;
@@ -4628,6 +4805,18 @@ static void GPlan(uint32_t ctrl, uint32_t unit, uint32_t n, DWORD now) {
     float files = floorf(wmax / G_FILE_M + 0.001f);
     if (files < 1.0f) files = 1.0f;
     gp->depth = ceilf((float)(n ? n : 1) / files) * G_ROW_M;
+    gp->depthKind = 0;
+    {   // v43: a yari wall's depth from its own file count (player-set through the drag width), 1 m rows
+        uint32_t vt = 0, obj = FormObject(unit, &vt);
+        if (g_yOn && obj && vt == FORM_VT_PIKEWALL_RVA && n) {   // part of Y: PATHFIX_YARI=0 keeps v42's G exactly
+            uint32_t yf = YariFiles(obj, wmax, n);
+            if (yf) {
+                gp->depth = ceilf((float)n / (float)yf) * Y_ROW_M;
+                gp->depthKind = 1;
+                InterlockedIncrement(&g_gPlanYariDepth);
+            }
+        }
+    }
     if (wmax >= G_MIN_WIDE_M) {
         float limit = G_NARROW_FRAC * wmax;
         int r = -1;
@@ -4661,7 +4850,7 @@ static void RelRow(const GPending* gp, float D, float Dp, float P, float A, int 
     w.nNodes = gp->nNodes; w.nRuns = gp->nRuns; w.run = run;
     w.runStart = run >= 0 ? gp->runs[run][0] : 0.0f;
     w.runEnd = run >= 0 ? gp->runs[run][1] : 0.0f;
-    w.applied = applied; w.toEnd = toEnd; w.reason = reason; w.pad = 0;
+    w.applied = applied; w.toEnd = toEnd; w.reason = reason; w.depthKind = gp->depthKind;
     InterlockedExchange(&w.valid, 1);
 }
 
@@ -4698,7 +4887,10 @@ static void AdvanceHit(const uint8_t* ctx) {
         reason = 1;
         if (A > gp->pathEnd - G_END_GAP_M) { A = gp->pathEnd - G_END_GAP_M; reason = 2; toEnd = 1; }   // v40: before the end
         Dp = A - gp->s0;
-        if (Dp > D) {
+        if (reason == 2 && gp->depthKind == 1) {   // v43 Y3: a yari wall keeps the game's front here
+            A = P; Dp = D; reason = 5; toEnd = 0;
+            InterlockedIncrement(&g_yNoEndGap);
+        } else if (Dp > D) {
             *dist = Dp;
             applied = 1;
             InterlockedIncrement(&g_gAdvApplied);
@@ -4713,7 +4905,7 @@ static void AdvanceHit(const uint8_t* ctx) {
         DWORD gnow = GameNow();
         float curRem = gp->pathEnd - gp->s0;
         bool newPath = gp->newOrder || gh->stamp == 0 || curRem > gh->remCursor + 1.0f;
-        if (newPath) { gh->anchored = 0; gh->latched = 0; }   // v42
+        if (newPath) { gh->anchored = 0; gh->latched = 0; gh->yBad = 0; }   // v42; v43 Y keep window
         if (newPath || gnow - gh->stamp > G_HOLD_AGE_MS) {
             if (gh->active) InterlockedIncrement(&g_gHoldReset);
             gh->active = 0;
@@ -4763,7 +4955,127 @@ static void AdvanceHit(const uint8_t* ctx) {
         gh->remCursor = curRem;
         gh->stamp = gnow ? gnow : 1;
     }
+    gp->front = gp->s0 + Dp;   // v43 Y: where the block front is laid (the slot call follows on this thread)
+    InterlockedExchange(&gp->frontStamp, (LONG)(now ? now : 1));
     RelRow(gp, D, Dp, P, A, run, applied, toEnd, reason, now);
+}
+
+// ---------------------------------------------------------------------------
+// v43 Y: lay a yari wall along the path where its straight grid would not fit.
+//
+// Entry hook on the yari wall's slot generator 0x103C5D30 (vtable 0x115E0760 slot 9, thiscall:
+// ECX = formation object, args out slot list, target, float width, men; RET 0x10). Only the call
+// from FUN_101bc880 (return 0x101BC9FB), right after the advance hook stored the front on this
+// thread. The block [front - (ranks - 1) m - Y_BACK_M, front + Y_AHEAD_M] is checked against the
+// plan's nodes: narrower than W - Y_SLACK_M or a turn of more than Y_BEND_DEG -> the block
+// generator FUN_103c4720 lays the slots (same object, same arguments; on straight open ground it
+// gives the same grid) and the hook returns for the game function. Kept Y_KEEP_MS game ms on the
+// same path; the final wall (front at the path end) is always the game's.
+// ---------------------------------------------------------------------------
+struct YariRecord {
+    volatile LONG valid;
+    uint32_t seq, timestamp, threadId, ctrl, unit, gtick, men, files, ranks;
+    float    W, depth, front, pathEnd, lo, hi, minW, maxTurn;
+    uint8_t  reason, narrow, bend, sub;   // reason 0 clean, 1 end, 2 narrow / bend, 3 kept, 4 fault
+};
+static const int YREC_SIZE = 32 * 1024;
+static YariRecord* g_yRecs = nullptr;
+static volatile LONG g_yRecIdx = 0, g_yRecOverflow = 0;
+
+static void YariRow(const YariRecord& r, DWORD now) {
+    if (!g_yRecs) return;
+    DWORD elapsed = 0;
+    if (!WindowOpen(now, &elapsed)) return;
+    LONG idx = InterlockedIncrement(&g_yRecIdx) - 1;
+    if (idx >= YREC_SIZE) { InterlockedExchange(&g_yRecOverflow, 1); return; }
+    YariRecord& w = g_yRecs[idx];
+    memcpy((void*)&w, &r, sizeof(r));
+    w.seq = (uint32_t)(InterlockedIncrement(&g_seq) - 1);
+    w.timestamp = elapsed;
+    w.threadId = GetCurrentThreadId();
+    InterlockedExchange(&w.valid, 1);
+}
+
+static uint32_t YariHit(const uint8_t* ctx) {
+    InterlockedIncrement(&g_yCalls);
+    if (g_fixMode != FIX_V38_G || g_fixDisabled || !g_yOn) { InterlockedIncrement(&g_yOff); return HOOK_CONTINUE; }
+    if (CtxDword(ctx, CTX_OFF_RET) != g_yCallSite) { InterlockedIncrement(&g_yOtherSite); return HOOK_CONTINUE; }
+    DWORD now = GetTickCount();
+    GPending* gp = GPendingFind(GetCurrentThreadId());
+    if (!gp || !gp->frontStamp || now - (DWORD)gp->frontStamp > G_PLAN_AGE_MS || gp->gnn <= 0) {
+        InterlockedIncrement(&g_yNoPlan);
+        return HOOK_CONTINUE;
+    }
+    InterlockedExchange(&gp->frontStamp, 0);   // one slot call per plan
+    uint32_t obj = CtxDword(ctx, CTX_OFF_ECX), out = CtxDword(ctx, CTX_OFF_ARG1), target = CtxDword(ctx, CTX_OFF_ARG2);
+    uint32_t men = CtxDword(ctx, CTX_OFF_ARG4);
+    float W;
+    memcpy(&W, ctx + CTX_OFF_ARG3, 4);
+    uint32_t vt = 0, mine = FormObject(gp->unit, &vt);
+    if (!mine || mine != obj || vt != FORM_VT_PIKEWALL_RVA || !_finite(W) || W <= 0.0f || W > 1000.0f ||
+        men == 0 || men > 10000) {
+        InterlockedIncrement(&g_yMismatch);
+        return HOOK_CONTINUE;
+    }
+    uint32_t files = YariFiles(obj, W, men);
+    if (!files) { InterlockedIncrement(&g_yNoFiles); return HOOK_CONTINUE; }
+    YariRecord r = {};
+    r.ctrl = gp->ctrl; r.unit = gp->unit; r.men = men; r.files = files;
+    r.ranks = (men + files - 1) / files;
+    { uint32_t o = (uint32_t)g_gtClock, tick = 0; r.gtick = o && ReadDword(o + 0x50, &tick) ? tick : 0; }
+    r.W = W;
+    r.depth = (float)(r.ranks - 1) * Y_ROW_M;
+    r.front = gp->front; r.pathEnd = gp->pathEnd;
+    r.lo = r.front - r.depth - Y_BACK_M; r.hi = r.front + Y_AHEAD_M;
+    r.minW = -1.0f; r.maxTurn = 0.0f;
+    bool havePrev = false;
+    float pd[2] = { 0.0f, 0.0f };
+    for (int i = 0; i < gp->gnn; i++) {
+        float a = gp->nStart[i], L = gp->nLen[i];
+        if (L <= 0.01f || a + L < r.lo || a > r.hi) continue;
+        if (r.minW < 0.0f || gp->nWid[i] < r.minW) r.minW = gp->nWid[i];
+        const float* d = gp->nDir[i];
+        if (havePrev) {
+            float c = pd[0] * d[0] + pd[1] * d[1];
+            c = c > 1.0f ? 1.0f : c < -1.0f ? -1.0f : c;
+            float deg = acosf(c) * 57.29578f;
+            if (deg > r.maxTurn) r.maxTurn = deg;
+        }
+        pd[0] = d[0]; pd[1] = d[1];
+        havePrev = true;
+    }
+    r.narrow = r.minW >= 0.0f && r.minW < W - Y_SLACK_M ? 1 : 0;
+    r.bend = r.maxTurn > Y_BEND_DEG ? 1 : 0;
+    GHold* gh = GHoldFor(gp->ctrl);
+    DWORD gnow = GameNow();
+    if (r.front >= r.pathEnd - Y_END_M) {
+        r.reason = 1;
+        InterlockedIncrement(&g_yEnd);
+    } else if (r.narrow || r.bend) {
+        r.reason = 2; r.sub = 1;
+        gh->yBad = gnow ? gnow : 1;
+        InterlockedIncrement(r.narrow ? &g_ySubNarrow : &g_ySubBend);
+    } else if (gh->yBad && gnow - gh->yBad <= Y_KEEP_MS) {
+        r.reason = 3; r.sub = 1;
+        InterlockedIncrement(&g_ySubKept);
+    } else {
+        InterlockedIncrement(&g_yClean);
+    }
+    uint32_t result = 0;
+    if (r.sub) {
+        bool ok = true;
+        __try { result = ((SlotGenFn)(g_moduleBaseVal + Y_BLOCK_GEN_RVA))(obj, 0, out, target, W, men); }
+        __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
+        if (!ok) {
+            r.reason = 4; r.sub = 0;
+            InterlockedIncrement(&g_yFaults);
+            InterlockedExchange(&g_yOn, 0);
+            Log("v43 Y: FAULT in the block slot generator for unit 0x%08X; Y switched off for this session "
+                "(G unchanged)", gp->unit);
+        }
+    }
+    YariRow(r, now);
+    return r.sub ? HOOK_RETURN(result) : HOOK_CONTINUE;
 }
 
 static void HandleHit(const uint8_t* ctx, int h) {
@@ -4821,10 +5133,27 @@ DEFINE_HOOK(13)
 DEFINE_HOOK(14)
 DEFINE_HOOK(15)
 DEFINE_HOOK(16)
+DEFINE_HOOK(17)   // v43 FUN_1014e870, event rows through EventHit
+
+// v43: the yari wall slot generator may be answered for (HOOK_DETOUR_RET, RET 0x10): the handler
+// returns HOOK_RETURN after laying the slots itself, HOOK_CONTINUE to run the game's generator.
+extern "C" uint32_t __stdcall Handler18(const uint8_t* ctx) {
+    if (g_state == 0 || g_layoutBad) return HOOK_CONTINUE;
+    if (CtxDword(ctx, CTX_OFF_ESP_BEFORE_PUSHAD) != (uint32_t)(uintptr_t)(ctx + CTX_OFF_RET)) {
+        InterlockedExchange(&g_layoutBad, 1);
+        return HOOK_CONTINUE;
+    }
+    DWORD now = GetTickCount();
+    DWORD elapsed = 0;
+    uint32_t hitNo = 0;
+    RateDecide(H_YARI, now, WindowOpen(now, &elapsed), &hitNo);   // counters only (rows: yari.csv)
+    return YariHit(ctx);
+}
+HOOK_DETOUR_RET(Detour18, Handler18, g_trampolines, 18, 0x10)
 
 static const HookDetour g_detours[HOOK_COUNT] = {
     Detour0, Detour1, Detour2, Detour3, Detour4, Detour5, Detour6, Detour7, Detour8, Detour9,
-    Detour10, Detour11, Detour12, Detour13, Detour14, Detour15, Detour16
+    Detour10, Detour11, Detour12, Detour13, Detour14, Detour15, Detour16, Detour17, Detour18
 };
 
 // ---------------------------------------------------------------------------
@@ -4951,57 +5280,61 @@ static void SummaryClose(FILE* f, const char* tmpPath, const char* finalPath) {
         Log("ERROR: cannot replace %s (error %lu)", finalPath, GetLastError());
 }
 
-static OutFile g_outEvents = { "pathfix_capture_v42_events.csv",
+static OutFile g_outEvents = { "pathfix_capture_v43_events.csv",
     "seq,timestamp_ms,thread_id,hook_id,hook_name,ecx,arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,"
     "arg4_as_float,ecx_60,ecx_60_as_float,ecx_60_ok,ret_abs,ret_rva,hit_no,record_reason,marker_no\n" };
-static OutFile g_outCursor = { "pathfix_capture_v42_cursor.csv",
+static OutFile g_outCursor = { "pathfix_capture_v43_cursor.csv",
     "seq,timestamp_ms,thread_id,this_ptr,arg1,ret_abs,ret_rva,call_no,reason,p_ptr,cursor_addr,"
     "node,progress,progress_hex,flag_74,node_next,read_flags,"
     "node_dump_len,node_dump_hex,p_dump_len,p_dump_hex\n" };
-static OutFile g_outWatch = { "pathfix_capture_v42_watch.csv",
+static OutFile g_outWatch = { "pathfix_capture_v43_watch.csv",
     "seq,timestamp_ms,thread_id,hook_id,slot,slot_gen,unit_this,watch_addr,watch_base,watch_offset,"
     "eip,eip_rva,eip_in_module,old_value,new_value,old_as_float,new_as_float,value_changed,is_read,"
     "eax,ebx,ecx,edx,esi,edi,ebp,esp,"
     "stack_rva_0,stack_rva_1,stack_rva_2,stack_rva_3,stack_rva_4,stack_rva_5,"
     "stack_rva_6,stack_rva_7,hits_this_eip_total,record_reason\n" };
-static OutFile g_outSlots = { "pathfix_capture_v42_slots.csv",
+static OutFile g_outSlots = { "pathfix_capture_v43_slots.csv",
     "seq,timestamp_ms,thread_id,slot,kind,unit_this,prev_this,p_ptr,old_addr,new_addr,new_node,value_hex,value_as_float\n" };
-static OutFile g_outSweeps = { "pathfix_capture_v42_sweeps.csv",
+static OutFile g_outSweeps = { "pathfix_capture_v43_sweeps.csv",
     "timestamp_ms,threads,armed,changed,failed,slot_mask,disarm\n" };
-static OutFile g_outBuilds = { "pathfix_capture_v42_builds.csv",
+static OutFile g_outBuilds = { "pathfix_capture_v43_builds.csv",
     "seq,timestamp_ms,thread_id,ret_abs,ret_rva,ecx,p_ptr,head,arg3,arg4,nodes,stop_reason,"
     "ms_since_ctor,overridden,hit_no,record_reason\n" };
-static OutFile g_outNodes = { "pathfix_capture_v42_build_nodes.csv",
+static OutFile g_outNodes = { "pathfix_capture_v43_build_nodes.csv",
     "build_seq,index,node,next,w74,w78,w74_hex,w78_hex,overridden,new74,new78,"
     "side,clearance,base0_x,base0_z,base1_x,base1_z,follow0_x,follow0_z,follow1_x,follow1_z,"
     "dump_len,dump_hex\n" };
-static OutFile g_outOrders = { "pathfix_capture_v42_orders.csv",
-    "seq,timestamp_ms,thread_id,ctrl,unit,soldier_count,cursor_node,cursor_t,ret_abs,ret_rva,listed,leader_idx,ready,speed_mode,soldiers\n" };
-static OutFile g_outGotos = { "pathfix_capture_v42_gotos.csv",
+static OutFile g_outOrders = { "pathfix_capture_v43_orders.csv",
+    "seq,timestamp_ms,thread_id,ctrl,unit,soldier_count,cursor_node,cursor_t,ret_abs,ret_rva,listed,leader_idx,ready,speed_mode,"
+    "gtick,form_vt,form_f0,form_f1,form_f2,form_f3,form_x1c,yari,groups,req_width,soldiers\n" };
+static OutFile g_outGotos = { "pathfix_capture_v43_gotos.csv",
     "seq,timestamp_ms,thread_id,kind,soldier,ret_abs,ret_rva,order_ptr,order_len,"
     "x,y,z,region,aux,heading,d18,d1c,f20,f24,b28,b29,order_hex\n" };
-static OutFile g_outSoldiers = { "pathfix_capture_v42_soldiers.csv",
+static OutFile g_outSoldiers = { "pathfix_capture_v43_soldiers.csv",
     "seq,timestamp_ms,thread_id,sample_no,reason,ctrl,unit,soldier_count,index,soldier,ent,ent_kind,flags,"
     "pos_x,pos_y,pos_z,heading,loc_x,loc_z,"
     "s_state,s_path,s_dest_x,s_dest_z,s_wp_x,s_wp_z,"
     "e_state,e_path,e_dest_x,e_dest_z,e_wp_x,e_wp_z,s_corridor,s_radius,"
     "spd_max,spd_cur,spd_tgt,spd_cmd,spd_mul,ord_spd,ord_t,ord_mode,elapsed,moving,direct,f384,f308\n" };
 
-static OutFile g_outFix = { "pathfix_capture_v42_fix.csv",
+static OutFile g_outFix = { "pathfix_capture_v43_fix.csv",
     "seq,timestamp_ms,thread_id,soldier,unit,mode,status,side,clamped,portal,type,edge,twin,len,r,e30,"
     "a_x,a_z,b_x,b_z,ma_x,ma_z,mb_x,mb_z,pa_x,pa_z,pb_x,pb_z,lane,"
     "before_x,before_y,before_z,after_x,after_z,t,t_i,t_min,t_max,scale,"
     "pos_x,pos_z,dest_x,dest_z,batch\n" };
-static OutFile g_outRadius = { "pathfix_capture_v42_radius.csv",
+static OutFile g_outRadius = { "pathfix_capture_v43_radius.csv",
     "seq,timestamp_ms,thread_id,soldier,unit,lane,prev_lane,reason,n,cnt0,cnt1,cnt2,q,w0,w,vertex_x,vertex_z,pos_x,pos_z,"
     "key,candidates\n" };
-static OutFile g_outAvoid = { "pathfix_capture_v42_avoid.csv",
+static OutFile g_outAvoid = { "pathfix_capture_v43_avoid.csv",
     "seq,timestamp_ms,thread_id,soldier,unit,kind,deg,side,hold,wall,n_stalled,n_mover,n_ignored,n_other,n_beyond,"
     "blocker,pos_x,pos_z,din_x,din_z,dout_x,dout_z,f0,fbest,horizon,speed,blk_vx,blk_vz\n" };
-static OutFile g_outRelease = { "pathfix_capture_v42_release.csv",
+static OutFile g_outRelease = { "pathfix_capture_v43_release.csv",
     "seq,timestamp_ms,thread_id,ctrl,unit,n,node,t,cursor_arc,path_end,nodes,max_width,narrow_runs,run,run_start,run_end,"
-    "depth,D,D_new,P,A,applied,to_end,reason\n" };
-static OutFile g_outFixRaw = { "pathfix_capture_v42_fixraw.csv",
+    "depth,D,D_new,P,A,applied,to_end,reason,depth_kind\n" };
+static OutFile g_outYari = { "pathfix_capture_v43_yari.csv",
+    "seq,timestamp_ms,thread_id,gtick,ctrl,unit,men,width,files,ranks,depth,front,path_end,span_lo,span_hi,"
+    "min_width,max_turn,narrow,bend,sub,reason\n" };
+static OutFile g_outFixRaw = { "pathfix_capture_v43_fixraw.csv",
     "seq,timestamp_ms,portal,edge,twin,portal_len,portal_hex,edge_len,edge_hex,twin_len,twin_hex\n" };
 
 static void RowFix(FILE* f, const FixRecord& r) {
@@ -5027,10 +5360,18 @@ static void RowRadius(FILE* f, const RadiusRecord& r) {
 }
 
 static void RowRelease(FILE* f, const ReleaseRecord& r) {
-    static const char* const reason[5] = { "vanilla", "past_run", "end_gap", "hold", "park" };
-    fprintf(f, "%u,%u,%u,0x%08X,0x%08X,%u,0x%08X,%.4f,%.2f,%.2f,%d,%.2f,%d,%d,%.2f,%.2f,%.2f,%.3f,%.3f,%.2f,%.2f,%u,%u,%s\n",
+    static const char* const reason[6] = { "vanilla", "past_run", "end_gap", "hold", "park", "yari_end" };
+    fprintf(f, "%u,%u,%u,0x%08X,0x%08X,%u,0x%08X,%.4f,%.2f,%.2f,%d,%.2f,%d,%d,%.2f,%.2f,%.2f,%.3f,%.3f,%.2f,%.2f,%u,%u,%s,%s\n",
         r.seq, r.timestamp, r.threadId, r.ctrl, r.unit, r.n, r.node, r.t, r.s0, r.pathEnd, r.nNodes, r.wmax, r.nRuns,
         r.run, r.runStart, r.runEnd, r.depth, r.D, r.Dp, r.P, r.A, (unsigned)r.applied, (unsigned)r.toEnd,
+        r.reason < 6 ? reason[r.reason] : "?", r.depthKind ? "yari" : "const");
+}
+
+static void RowYari(FILE* f, const YariRecord& r) {   // v43
+    static const char* const reason[5] = { "clean", "end", "bad_span", "kept", "fault" };
+    fprintf(f, "%u,%u,%u,%u,0x%08X,0x%08X,%u,%.2f,%u,%u,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.1f,%u,%u,%u,%s\n",
+        r.seq, r.timestamp, r.threadId, r.gtick, r.ctrl, r.unit, r.men, r.W, r.files, r.ranks, r.depth, r.front,
+        r.pathEnd, r.lo, r.hi, r.minW, r.maxTurn, (unsigned)r.narrow, (unsigned)r.bend, (unsigned)r.sub,
         r.reason < 5 ? reason[r.reason] : "?");
 }
 
@@ -5055,7 +5396,7 @@ static void RowFixRaw(FILE* f, const FixRawRecord& r) {
 
 static void WriteFixTotals(bool logIt) {
     char tmp[MAX_PATH + 8], fin[MAX_PATH];
-    FILE* f = SummaryOpen("pathfix_capture_v42_fix_totals.csv", tmp, fin);
+    FILE* f = SummaryOpen("pathfix_capture_v43_fix_totals.csv", tmp, fin);
     if (f) fprintf(f, "counter,value\n");
     struct { const char* name; LONG v; } rows[] = {
         { "handler_calls", g_fixCalls }, { "goal_returns", g_fixGoal }, { "apex_returns", g_fixApex },
@@ -5121,6 +5462,12 @@ static void WriteFixTotals(bool logIt) {
         { "release_adv_hold_end", g_gAdvHoldEnd }, { "release_hold_reset", g_gHoldReset },
         { "release_adv_park", g_gAdvPark }, { "release_adv_park_latched", g_gAdvParkLatched }, { "release_rows", g_relRecIdx },
         { "release_rows_overflow", g_relRecOverflow },
+        { "release_plan_yari_depth", g_gPlanYariDepth }, { "yari_on", g_yOn }, { "yari_calls", g_yCalls },
+        { "yari_off", g_yOff }, { "yari_other_site", g_yOtherSite }, { "yari_no_plan", g_yNoPlan },
+        { "yari_mismatch", g_yMismatch }, { "yari_no_files", g_yNoFiles }, { "yari_end", g_yEnd },
+        { "yari_clean", g_yClean }, { "yari_sub_narrow", g_ySubNarrow }, { "yari_sub_bend", g_ySubBend },
+        { "yari_sub_kept", g_ySubKept }, { "yari_faults", g_yFaults }, { "yari_rows", g_yRecIdx },
+        { "yari_rows_overflow", g_yRecOverflow }, { "yari_no_end_gap", g_yNoEndGap },
     };
     for (size_t i = 0; i < sizeof(rows) / sizeof(rows[0]); i++)
         if (f) fprintf(f, "%s,%ld\n", rows[i].name, (long)rows[i].v);
@@ -5160,6 +5507,13 @@ static void WriteFixTotals(bool logIt) {
             (long)g_gAdvCalls, (long)g_gAdvOtherSite, (long)g_gAdvNoPlan, (long)g_gAdvMismatch, (long)g_gAdvVanilla,
             (long)g_gAdvApplied, (long)g_gAdvToEnd, (long)g_gAdvNotFarther, (long)g_gAdvHeld, (long)g_gAdvHoldEnd,
             (long)g_gHoldReset, (long)g_gAdvPark, (long)g_gAdvParkLatched, (long)g_relRecIdx);
+        Log("Yari wall (Y, v43 %s): %ld slot calls (%ld fix off, %ld other sites, %ld no plan, %ld mismatch, %ld no files), "
+            "%ld final walls, %ld clean spans, %ld laid along the path (%ld narrow, %ld bend, %ld kept), %ld faults; "
+            "%ld plans with the yari depth; %ld rows; %ld end-gap anchors left to the game (Y3)",
+            g_yOn ? "on" : "OFF", (long)g_yCalls, (long)g_yOff, (long)g_yOtherSite, (long)g_yNoPlan, (long)g_yMismatch,
+            (long)g_yNoFiles, (long)g_yEnd, (long)g_yClean, (long)(g_ySubNarrow + g_ySubBend + g_ySubKept),
+            (long)g_ySubNarrow, (long)g_ySubBend, (long)g_ySubKept, (long)g_yFaults, (long)g_gPlanYariDepth,
+            (long)g_yRecIdx, (long)g_yNoEndGap);
         Log("Fix totals: %ld handler calls, %ld goal, %ld apex; adjusted %ld; mode now %ld%s",
             (long)g_fixCalls, (long)g_fixGoal, (long)g_fixApex, (long)g_fixStatus[FS_ADJUSTED],
             (long)g_fixMode, g_fixDisabled ? " (DISABLED)" : "");
@@ -5294,6 +5648,8 @@ static void RowOrder(FILE* f, const OrderRecord& r) {
     fprintf(f, "%u,%u,%u,0x%08X,0x%08X,%u,0x%08X,%.6g,0x%08X,%s,%u,%u,%u,%u,",
         r.seq, r.timestamp, r.threadId, r.ctrl, r.unit, r.count, r.cursorNode, t, r.retAbs, ret, r.listed,
         r.leaderIdx, r.ready, r.speedMode);
+    fprintf(f, "%u,0x%06X,%.4f,%.4f,%.4f,%.4f,%.4f,%d,%d,%.3f,",   // v43
+        r.gtick, r.formVt, r.formF[0], r.formF[1], r.formF[2], r.formF[3], r.formX1c, r.yari, r.groups, r.reqWidth);
     if (r.listStart >= 0)
         for (uint32_t i = 0; i < r.listed; i++)
             fprintf(f, i ? ";%08X" : "%08X", g_soldierPool[r.listStart + i]);
@@ -5359,7 +5715,7 @@ static void RowSample(FILE* f, const SampleRecord& s) {
 
 static void WriteTotals(bool logIt) {
     char tmp[MAX_PATH + 8], fin[MAX_PATH];
-    FILE* f = SummaryOpen("pathfix_capture_v42_totals.csv", tmp, fin);
+    FILE* f = SummaryOpen("pathfix_capture_v43_totals.csv", tmp, fin);
     if (logIt) Log("Per-hook totals (hits since install / hits in window / records written):");
     if (f) fprintf(f, "hook_id,hook_name,role,rva,total_hits,window_hits,recorded\n");
     for (int h = 0; h < HOOK_COUNT; h++) {
@@ -5375,7 +5731,7 @@ static void WriteTotals(bool logIt) {
 
 static void WriteWatchTotals(bool logIt) {
     char tmp[MAX_PATH + 8], fin[MAX_PATH];
-    FILE* f = SummaryOpen("pathfix_capture_v42_watch_totals.csv", tmp, fin);
+    FILE* f = SummaryOpen("pathfix_capture_v43_watch_totals.csv", tmp, fin);
     if (logIt) Log("Watch totals per slot and EIP (EIP is the instruction after the access):");
     if (f) fprintf(f, "slot,watch_addr_last,eip,eip_rva,eip_in_module,total_hits,recorded,value_changes,reads\n");
     for (int sl = 0; sl < WATCH_SLOTS; sl++) {
@@ -5398,7 +5754,7 @@ static void WriteWatchTotals(bool logIt) {
 
 static void WriteUnits() {
     char tmp[MAX_PATH + 8], fin[MAX_PATH];
-    FILE* f = SummaryOpen("pathfix_capture_v42_units.csv", tmp, fin);
+    FILE* f = SummaryOpen("pathfix_capture_v43_units.csv", tmp, fin);
     if (!f) return;
     fprintf(f, "unit,first_ctrl,first_soldier,first_ent,ent_kind,first_count\n");
     int n = g_unitsUsed;
@@ -5472,7 +5828,7 @@ static void WriteFaults() {
     LONG total = g_faultCount;
     if (total == 0) return;
     char tmp[MAX_PATH + 8], fin[MAX_PATH];
-    FILE* f = SummaryOpen("pathfix_capture_v42_faults.csv", tmp, fin);
+    FILE* f = SummaryOpen("pathfix_capture_v43_faults.csv", tmp, fin);
     if (!f) return;
     fprintf(f, "n,timestamp_ms,thread_id,code,eip,eip_rva,av_kind,av_addr,eax,ebx,ecx,edx,esi,edi,ebp,esp,"
                "stack_rva_0,stack_rva_1,stack_rva_2,stack_rva_3,stack_rva_4,stack_rva_5,stack_rva_6,stack_rva_7\n");
@@ -5512,6 +5868,7 @@ static void FlushLocked(bool final) {
     Append(g_outAvoid, g_avRecs, &g_avRecIdx, (LONG)AVREC_SIZE, final, RowAvoid);
     Append(g_outRadius, g_rqRecs, &g_rqRecIdx, (LONG)RQREC_SIZE, final, RowRadius);
     Append(g_outRelease, g_relRecs, &g_relRecIdx, (LONG)RELREC_SIZE, final, RowRelease);
+    Append(g_outYari, g_yRecs, &g_yRecIdx, (LONG)YREC_SIZE, final, RowYari);   // v43
     if (g_watch) {
         Append(g_outWatch, g_watch, &g_watchIdx, (LONG)WATCH_SIZE, final, RowWatch);
         Append(g_outSlots, g_slotEv, &g_slotEvIdx, (LONG)SLOTEV_SIZE, final, RowSlot);
@@ -5551,6 +5908,7 @@ static void CloseAllOutputs() {
     OutClose(g_outAvoid, "avoidance rows");
     OutClose(g_outRadius, "radius rows");
     OutClose(g_outRelease, "release rows");
+    OutClose(g_outYari, "yari rows");
     OutClose(g_outWatch, "watch records");
     OutClose(g_outSlots, "slot events");
     OutClose(g_outSweeps, "sweeps");
@@ -5821,17 +6179,18 @@ static void ResetCaptureState() {
     ClearUsed(g_avRecs, &g_avRecIdx, (LONG)AVREC_SIZE);
     ClearUsed(g_rqRecs, &g_rqRecIdx, (LONG)RQREC_SIZE);
     ClearUsed(g_relRecs, &g_relRecIdx, (LONG)RELREC_SIZE);
+    ClearUsed(g_yRecs, &g_yRecIdx, (LONG)YREC_SIZE);
     ClearUsed(g_watch, &g_watchIdx, (LONG)WATCH_SIZE);
     ClearUsed(g_slotEv, &g_slotEvIdx, (LONG)SLOTEV_SIZE);
     InterlockedExchange(&g_sweepIdx, 0);
     volatile LONG* flags[] = { &g_eventOverflow, &g_cursorOverflow, &g_buildOverflow, &g_nodeRowOverflow,
         &g_orderOverflow, &g_poolOverflow, &g_gotoOverflow, &g_sampleOverflow, &g_srowOverflow, &g_fixRecOverflow,
-        &g_avRecOverflow, &g_rqRecOverflow, &g_relRecOverflow, &g_watchOverflow, &g_slotEvOverflow,
+        &g_avRecOverflow, &g_rqRecOverflow, &g_relRecOverflow, &g_yRecOverflow, &g_watchOverflow, &g_slotEvOverflow,
         &g_seq, &g_markerCount, &g_entSelf, &g_entOther, &g_entBad };
     for (size_t i = 0; i < sizeof(flags) / sizeof(flags[0]); i++) InterlockedExchange(flags[i], 0);
     OutFile* files[] = { &g_outEvents, &g_outCursor, &g_outWatch, &g_outSlots, &g_outSweeps, &g_outBuilds,
         &g_outNodes, &g_outOrders, &g_outGotos, &g_outSoldiers, &g_outFix, &g_outRadius, &g_outAvoid,
-        &g_outRelease, &g_outFixRaw };
+        &g_outRelease, &g_outYari, &g_outFixRaw };
     for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); i++) OutReset(*files[i]);
     for (int i = 0; i < THIS_TABLE_SIZE; i++) InterlockedExchange(&g_this[i].announced, 0);
     for (int i = 0; i < UNIT_TABLE; i++) InterlockedExchange(&g_units[i].announced, 0);
@@ -5857,7 +6216,7 @@ static void RecStart() {
         return;
     }
     g_recNumber++;
-    Log("PATHFIX BUILD v42 recording %d, build id %s %s", g_recNumber, __DATE__, __TIME__);
+    Log("PATHFIX BUILD v43 recording %d, build id %s %s", g_recNumber, __DATE__, __TIME__);
     Log("P: recording %d ON (path fix %s) -> %s", g_recNumber,
         g_fixMode == FIX_V38_G ? "ON, variant G" : g_fixMode == FIX_OFF ? "OFF" : kFixModeText[g_fixMode], folder);
     g_captureStart = GetTickCount();
@@ -5931,6 +6290,7 @@ static void PlayLoop() {
         if (tick - lastUef >= 1000) { lastUef = tick; AssertCrashFilter(); }
         DWORD elapsed = g_recActive ? tick - g_captureStart : 0;
         if (KeyEdge(KEY_FIX, &iDown)) FixKeyF6(elapsed);
+        TogglePoll(elapsed);   // v43 PATHFIX_TOGGLE_TICKS
         FixReportDisabled(elapsed);
         if (KeyEdge(KEY_LANE, &lDown)) FixKeyF7(elapsed);   // harness only
         if (KeyEdge(KEY_FINISH, &pDown)) {
@@ -5977,6 +6337,7 @@ static DWORD WINAPI DumpThread(LPVOID) {
 
         DWORD elapsed = g_state == 2 ? tick - g_captureStart : 0;
         if (KeyEdge(KEY_FIX, &f6Down)) FixKeyF6(elapsed);
+        TogglePoll(elapsed);   // v43 PATHFIX_TOGGLE_TICKS
         FixReportDisabled(elapsed);
         if (KeyEdge(KEY_LANE, &f7Down)) FixKeyF7(elapsed);   // harness only
         bool f8Edge = g_captureOn && KeyEdge(KEY_MARK, &f8Down);   // v41: O and P only in capture mode
@@ -6049,6 +6410,7 @@ static DWORD WINAPI DumpThread(LPVOID) {
         DWORD tick = GetTickCount();
         if (tick - lastF >= 1000) { lastF = tick; AssertCrashFilter(); }
         if (KeyEdge(KEY_FIX, &f6Down)) FixKeyF6(0);
+        TogglePoll(0);   // v43 PATHFIX_TOGGLE_TICKS
         if (KeyEdge(KEY_LANE, &f7Down)) FixKeyF7(0);
         FixReportDisabled(0);
         if (tick - lastTotals >= 60000) {
@@ -6090,6 +6452,7 @@ static bool AllocCaptureBuffers() {
     if (!g_avRecs) g_avRecs = AllocRecords<AvoidRecord>(AVREC_SIZE);
     if (!g_rqRecs) g_rqRecs = AllocRecords<RadiusRecord>(RQREC_SIZE);
     if (!g_relRecs) g_relRecs = AllocRecords<ReleaseRecord>(RELREC_SIZE);   // v38; null = no release rows (G still acts)
+    if (!g_yRecs) g_yRecs = AllocRecords<YariRecord>(YREC_SIZE);            // v43; null = no yari rows (Y still acts)
     if (!g_events || !g_cursor || !g_dumps || !g_builds || !g_nodeRows ||
         !g_orders || !g_soldierPool || !g_gotos || !g_samples || !g_srows || !g_fixRecs)
         return false;
@@ -6115,12 +6478,20 @@ static bool AllocCaptureBuffers() {
 void Pathfix_Install() {   // registered in proxy/fixes.cpp (was InstallHooks in hooks_v40.cpp)
     Log("------------------------------------------------------------");
     g_captureOn = LogCaptureMode();
-    Log("PATHFIX BUILD v42 (variant G = release beyond the choke + park release + radius lanes + lead the turn + "
-        "no crowd damping; I toggles the path fix on / off, off at launch; P toggles a recording), build id %s %s",
+    Log("PATHFIX BUILD v43 (variant G = release beyond the choke + park release + radius lanes + lead the turn + "
+        "no crowd damping + yari wall laid along the path; I toggles the path fix on / off, off at launch; "
+        "P toggles a recording), build id %s %s",
         __DATE__, __TIME__);
     Log("------------------------------------------------------------");
     Log("  Capture:     %s", g_captureOn ? "ON (PATHFIX_CAPTURE=1): v40 capture, run folder, O marker, P finish"
                                          : "OFF at launch: P starts / stops a recording (v42)");
+    {   // v43: PATHFIX_YARI=0 keeps G but not its yari wall part (comparison runs)
+        char y[8] = "";
+        if (GetEnvironmentVariableA("PATHFIX_YARI", y, sizeof(y)) > 0 && y[0] == '0') {
+            InterlockedExchange(&g_yOn, 0);
+            Log("  PATHFIX_YARI=0: the yari wall part of G (Y) is OFF for this session");
+        }
+    }
     Log("  Folder:      %s", LogRunDir());
     Mem_Init();
     Log("  Address:     user mode up to 0x%08X (pointer checks use this)", Mem_UserMax());
@@ -6190,6 +6561,7 @@ void Pathfix_Install() {   // registered in proxy/fixes.cpp (was InstallHooks in
     }
 
     g_gCallSite = (uint32_t)(uintptr_t)(base + G_CALL_SITE_RVA);   // v38
+    g_yCallSite = (uint32_t)(uintptr_t)(base + Y_CALL_SITE_RVA);   // v43
     FixTonesInit();
     FixInstallLog();
     FixEndpointsInit(base);
@@ -6236,6 +6608,33 @@ void Pathfix_Install() {   // registered in proxy/fixes.cpp (was InstallHooks in
             InterlockedExchange(&g_fixOn, 1);
             InterlockedExchange(&g_fixMode, FIX_V38_G);
             Log("PATHFIX_ON=1: path fix ON at launch, variant G (mode %d)", (int)FIX_V38_G);
+        }
+    }
+    {   // v43: PATHFIX_TOGGLE_TICKS=t1,t2,... (ascending game ticks): the fix flips at each, as an I press
+        char tt[256] = "";
+        if (GetEnvironmentVariableA("PATHFIX_TOGGLE_TICKS", tt, sizeof(tt)) > 0) {
+            const char* p = tt;
+            uint32_t last = 0;
+            bool bad = false;
+            while (*p && g_togN < TOGGLE_MAX) {
+                char* e = nullptr;
+                unsigned long v = strtoul(p, &e, 10);
+                if (e == p || v <= last) { bad = true; break; }
+                g_togTicks[g_togN++] = (uint32_t)v;
+                last = (uint32_t)v;
+                p = e;
+                while (*p == ',' || *p == ' ') p++;
+            }
+            if (bad || *p) {
+                Log("PATHFIX_TOGGLE_TICKS=%s: not a list of ascending ticks; schedule ignored", tt);
+                g_togN = 0;
+            } else {
+                char line[256];
+                int at = 0;
+                for (int i = 0; i < g_togN; i++) at += snprintf(line + at, sizeof(line) - at, "%s%u", i ? ", " : "", g_togTicks[i]);
+                Log("PATHFIX_TOGGLE_TICKS: the path fix flips at game ticks %s (%d flips; starts %s)", line, g_togN,
+                    g_fixMode == FIX_V38_G ? "ON" : "OFF");
+            }
         }
     }
 
