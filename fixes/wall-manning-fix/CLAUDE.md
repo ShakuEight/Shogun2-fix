@@ -32,6 +32,9 @@ seconds but adjusted nothing). User decisions: the fix applies to all units; C w
 - Game folder: the user's active `dinput8.dll` (the 21:04 build) was set aside as
   `dinput8.dll.pre_wallfix` during the runs and put back at the end; the session build sits there
   as `dinput8.dll.wallfix`.
+- 2026-10-19: wallfix build installed as the active `dinput8.dll` for the user's live check (copy
+  of `dinput8.dll.wallfix`, SHA-256 451ACC90...); the 21:04 build set aside again as
+  `dinput8.dll.pre_wallfix`.
 
 Next (not started):
 - User live check: order units onto walls in a custom siege, fix on and off (I).
