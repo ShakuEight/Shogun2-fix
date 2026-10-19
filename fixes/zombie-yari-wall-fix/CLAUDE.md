@@ -38,9 +38,10 @@ count goes up after it broke".
   groups (stack empty when found) ran 21..66 m in 20 s and kept 56 / 36 / 89 / 87 men (off:
   12 / 0 / 16 / 14). Table in README.md.
 - Harness `tests/zombiefix_test.cpp`: fix 23, off 18, probe 46, corrupt 3.
-- Game folder: had no active `dinput8.dll` at the start. Session builds were installed as
-  `dinput8.dll` for the runs; the intermediate ones sat as `dinput8.dll.zombieprobe`
-  (probe-only build), `.zombierun2`..`.zombierun4`.
+- Game folder: had no active `dinput8.dll` at the start and has none at the end. Session builds
+  were installed as `dinput8.dll` for the runs (intermediate copies removed); the final dev
+  build (all fixes + zombiefix, SHA-256 0711A050...) sits as `dinput8.dll.zombiefix`. Probe runs
+  in `zombiefix_runs\` take 1.2 GB.
 
 Pitfalls met:
 - A replay recorded with dev fixes on must be replayed with them on: the user may not know which
