@@ -95,6 +95,7 @@ HOOKS = [
     ("FUN_101604a0", 0x1604A0, "56 8B F1 80 BE 08 05 00 00 01"),
     ("FUN_103daa80", 0x3DAA80, "56 8B F1 8B 46 04"),
     ("FUN_101605f0", 0x1605F0, "56 57 8B F9 8B 77 10"),   # (prologues_zombiefix_stop2.txt) stop every group
+    ("FUN_10154180", 0x154180, "83 EC 34 56 8B F1"),      # (prologues_zombiefix_reform.txt) unit re-form
 ]
 
 

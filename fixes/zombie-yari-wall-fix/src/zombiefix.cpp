@@ -52,7 +52,8 @@
 //   zombie_setup.csv   every group rout set-up (FUN_101a9bf0, stack before and after) and every
 //                      behaviour stack pop of a routing unit's group (FUN_1019e480, lock byte, caller),
 //                      every group stop of a routing unit (FUN_101604a0, and FUN_101605f0 for all its groups)
-//                      and attack command post (FUN_103daa80), with the game's yari wall test
+//                      and attack command post (FUN_103daa80), with the game's yari wall test; every
+//                      unit re-form of a routing unit (FUN_10154180, with its caller)
 
 #include "log.h"
 #include "hook.h"
@@ -89,6 +90,7 @@ enum {
     H_STOP,            // FUN_101604a0 entry: group stop: current action cancelled, stack cleared (ECX = group) (probe)
     H_POST,            // FUN_103daa80 entry: group attack command posted into its action slot (ECX = group) (probe)
     H_STOPALL,         // FUN_101605f0 entry: every group of a unit stopped (ECX = unit +0xB80) (probe)
+    H_REFORM,          // FUN_10154180 entry: the unit re-forms (stops every group, new formation task; ECX = unit) (probe)
     HOOK_COUNT
 };
 
@@ -122,6 +124,9 @@ static const HookDef g_hookDefs[HOOK_COUNT] = {
     // docs/re/prologues_zombiefix_stop2.txt
     { "FUN_101605f0", "stop every group of a unit", 0x1605F0, 7,
       { 0x56, 0x57, 0x8B, 0xF9, 0x8B, 0x77, 0x10 }, -1, true },           // PUSH ESI; PUSH EDI; MOV EDI,ECX; MOV ESI,[EDI+0x10]
+    // docs/re/prologues_zombiefix_reform.txt
+    { "FUN_10154180", "unit re-form", 0x154180, 6,
+      { 0x83, 0xEC, 0x34, 0x56, 0x8B, 0xF1 }, -1, true },                  // SUB ESP,0x34; PUSH ESI; MOV ESI,ECX
 };
 
 static HookSlot g_slots[HOOK_COUNT] = {};
@@ -677,6 +682,16 @@ static void HandlePost(const uint8_t* ctx) {
              YariOn(g));
 }
 
+// FUN_10154180 (ECX = unit): only for routing units; one row (the main group's stack).
+static void HandleReform(const uint8_t* ctx) {
+    if (!g_probe) return;
+    uint32_t u = R32(ctx + ZOMBIE_OFF_ECX);
+    if (!IsBattleUnit(u)) return;
+    uint32_t rout = RoutOf(u);
+    if (rout == 0 || rout == 0xFFFFFFFFu) return;
+    SetupRow("reform", R32(ctx + ZOMBIE_OFF_RET), u, Rd(u + U_OFF_MAIN), R32(ctx + ZOMBIE_OFF_ARG5) & 0xFF);
+}
+
 // FUN_101605f0 (ECX = unit +0xB80, its group list): only for routing units; one row per group.
 static void HandleStopAll(const uint8_t* ctx) {
     if (!g_probe) return;
@@ -943,6 +958,7 @@ extern "C" void __stdcall ZombieHandler9(const uint8_t* ctx) { HandleTaskCtor(ct
 extern "C" void __stdcall ZombieHandler10(const uint8_t* ctx) { HandleStop(ctx); }
 extern "C" void __stdcall ZombieHandler11(const uint8_t* ctx) { HandlePost(ctx); }
 extern "C" void __stdcall ZombieHandler12(const uint8_t* ctx) { HandleStopAll(ctx); }
+extern "C" void __stdcall ZombieHandler13(const uint8_t* ctx) { HandleReform(ctx); }
 
 HOOK_DETOUR(ZombieDetour0, ZombieHandler0, g_zombieTrampolines, 0)
 HOOK_DETOUR_RET(ZombieDetour1, ZombieHandler1, g_zombieTrampolines, 1, 0xC)    // FUN_10435410: __thiscall, 3 stack args
@@ -957,11 +973,12 @@ HOOK_DETOUR(ZombieDetour9, ZombieHandler9, g_zombieTrampolines, 9)
 HOOK_DETOUR(ZombieDetour10, ZombieHandler10, g_zombieTrampolines, 10)
 HOOK_DETOUR(ZombieDetour11, ZombieHandler11, g_zombieTrampolines, 11)
 HOOK_DETOUR(ZombieDetour12, ZombieHandler12, g_zombieTrampolines, 12)
+HOOK_DETOUR(ZombieDetour13, ZombieHandler13, g_zombieTrampolines, 13)
 
 static const HookDetour g_detours[HOOK_COUNT] = { ZombieDetour0, ZombieDetour1, ZombieDetour2, ZombieDetour3,
                                                   ZombieDetour4, ZombieDetour5, ZombieDetour6, ZombieDetour7,
                                                   ZombieDetour8, ZombieDetour9, ZombieDetour10, ZombieDetour11,
-                                                  ZombieDetour12 };
+                                                  ZombieDetour12, ZombieDetour13 };
 
 // Harness only (fixes/zombie-yari-wall-fix/tests): fix and probe counters.
 extern "C" __declspec(dllexport) void __stdcall ZombieFixTestCounters(long* out) {

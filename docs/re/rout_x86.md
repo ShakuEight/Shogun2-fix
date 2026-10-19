@@ -84,8 +84,14 @@ broken (level 6, rout state 2), its men stand in their yari wall stance, and its
 rising: 34 and 40 kills after breaking for the two units the user saw, 19 for a third that was
 wiped out standing. Later some of these groups also get direct intercept tasks.
 
-Two other yari units also broke under 0x115C82B4 and ran normally; why the attack order restarts
-in the break tick for some units only is open.
+Why only units with a special formation: the break switches yari wall off, the formation change
+handler `FUN_1014e870` (formation type from the active abilities via `FUN_101672b0`, installed by
+`FUN_1014e990`) re-forms the unit through `FUN_10154180`, which stops every group (twice) and builds
+a formation task (unit +0x440). Seen at the break of all 12 yari units, never for the bow units of
+the replay `bow_route`. A unit whose attack order is its current task restarts it in that tick
+(`FUN_101b9290`: posts the attack command once per instance, then re-forms via `FUN_101543b0`); the
+next tick the order re-forms again after the rout set-up and deletes the rout task. Units with
+another current task re-form through `FUN_10154310` and are not affected.
 
 Group methods used above: `FUN_101604a0` stops a group (cancels its current action at +0x488 /
 flag +0x508, clears the stack); `FUN_101605f0` (ECX = unit +0xB80) stops every group of the unit;

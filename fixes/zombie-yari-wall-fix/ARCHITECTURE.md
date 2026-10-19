@@ -50,17 +50,26 @@ when the battle is decided (about 120 s); the replay does not continue after tha
    - right after, zombies only: `FUN_10154180` stops every group of the unit again, which deletes
      the rout task; two ticks later the group update (`FUN_101b6490`) finds the stack empty and
      pushes the default re-form task.
-6. **Why yari wall (open)**: all four zombies were running the yari-wall-only attack task
-   0x115C82B4 when they broke (the attack command executor `FUN_103d0470` pushes it only for a
-   unit with yari wall active; other units get the melee attack task 0x115C0DFC). Two other yari
-   units also broke under that task and ran normally, so it is necessary in this data but not
-   sufficient. Not the cause: the interrupt state at the break (two zombies broke from the melee
-   interrupt), the number of attack command posts (enemy units post as often). Only yari units
-   broke in this replay, so the replay cannot show whether other units ever get it. Why a stuck
-   unit is deadly with yari wall: a standing unit in its yari wall stance kills by contact (pike
+6. **Why yari wall**: breaking switches yari wall off, so the unit's formation changes from the
+   yari wall formation back to the block. The formation change handler `FUN_1014e870` picks the
+   formation from the active abilities (`FUN_101672b0`), installs it and re-forms the unit
+   (`FUN_10154180`: every group stopped, a new formation task). A probe hook on the re-form
+   (run 20261019_122816, in sync) shows it at the break for all 12 yari units; in the user's
+   second replay `bow_route` (three bow units charge, melee and rout; recorded with the
+   zombie-only build, fix off; run 20261019_123056, in sync) it never happens: no formation to
+   drop, no re-form, the rout set-up simply replaces the melee attack task with the rout task
+   (0 groups without a rout task, 0 kills after breaking).
+   Which yari units become zombies: those whose attack order is still the unit's current task at
+   the break. The re-form restarts that order (`FUN_101b9290` posts a new attack command and
+   re-forms through `FUN_101543b0`), and the next tick the order re-forms the unit again, right
+   after the rout set-up gave the group its rout task: the stop of every group deletes it. The
+   other 8 yari units re-formed through `FUN_10154310` (another current task) and ran.
+   Why a stuck yari unit is deadly: standing in its yari wall stance it kills by contact (pike
    outcome `FUN_10435410`, collision knockdown `FUN_10430cf0`) without an order, and a broken unit
-   (level 6) keeps its melee values. The fix acts on the result (a routing group without its rout
-   task), so it covers the same failure in any unit.
+   (level 6) keeps its melee values. Other special formations that are dropped at a break (yari
+   square, wedge, square and the others picked by `FUN_101672b0`) go through the same re-form;
+   untested. The fix acts on the result (a routing group without its rout task), so it covers
+   them as well.
 
 ## The fix
 

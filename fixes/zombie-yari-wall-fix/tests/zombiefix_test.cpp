@@ -40,7 +40,7 @@ static TestKeys g_keys = nullptr;
                                else { g_fail++; printf("FAIL %s\n", name); } } while (0)
 
 struct Site { uint32_t rva; int origLen; uint8_t orig[10]; uint8_t stub[32]; int stubLen; };
-enum { S_TRANS = 0, S_PIKE, S_KNOCK, S_REFORM, S_INTERCEPT, S_ATTACK, S_ROUTTICK, S_SETUP, S_CLEAR, S_YARI, S_STOP, S_POST, S_STOPALL, SITES };
+enum { S_TRANS = 0, S_PIKE, S_KNOCK, S_REFORM, S_INTERCEPT, S_ATTACK, S_ROUTTICK, S_SETUP, S_CLEAR, S_YARI, S_STOP, S_POST, S_STOPALL, S_REFORMU, SITES };
 static const Site kSites[SITES] = {
     { 0x1374D0B, 5, { 0x89, 0x7E, 0x04, 0x8B, 0xCF }, { 0xC3 }, 1 },                           // ret (entered by CALL)
     // the pike outcome: result {outcome = [attacker+0x5F0], who = attacker}; returns the result; ret 0xC
@@ -77,6 +77,8 @@ static const Site kSites[SITES] = {
     { 0x3DAA80, 6, { 0x56, 0x8B, 0xF1, 0x8B, 0x46, 0x04 }, { 0x5E, 0xC2, 0x04, 0x00 }, 4 },
     // stop every group: after PUSH ESI; PUSH EDI; MOV EDI,ECX; MOV ESI,[EDI+0x10]: pop edi; pop esi; ret
     { 0x1605F0, 7, { 0x56, 0x57, 0x8B, 0xF9, 0x8B, 0x77, 0x10 }, { 0x5F, 0x5E, 0xC3 }, 3 },
+    // the unit re-form: after SUB ESP,0x34; PUSH ESI; MOV ESI,ECX: pop esi; add esp,0x34; ret 0x18
+    { 0x154180, 6, { 0x83, 0xEC, 0x34, 0x56, 0x8B, 0xF1 }, { 0x5E, 0x83, 0xC4, 0x34, 0xC2, 0x18, 0x00 }, 7 },
 };
 static const uint32_t RVA_ROUT_TASK_VT = 0x15E01F4;
 
@@ -383,6 +385,20 @@ static void RunProbe(HMODULE proxy) {
     Put32(b.u, 0xB90, Addr(blist));
     CallThis(kSites[S_STOPALL].rva, Addr(b.u + 0xB80), 0);
     CHECK(C(C_SETUP_ROWS) == 6, "S4 stop of every group of a routing unit logged per group");
+    {
+        uint32_t fn = Addr(g_base) + kSites[S_REFORMU].rva, self = Addr(b.u);
+        __asm {
+            push 0
+            push 0
+            push 1
+            push 0
+            push 0
+            push 0
+            mov ecx, self
+            call fn
+        }
+    }
+    CHECK(C(C_SETUP_ROWS) == 7, "S5 unit re-form of a routing unit logged");
     b.g[0x2781] = 0;
     Put32(b.u, 0xCEC, 0);
     // the fix (on by default) with its row
@@ -429,7 +445,7 @@ static void RunProbe(HMODULE proxy) {
     CHECK(Lines(dir, "zombie_men.csv") >= 3, "F17 zombie_men.csv: men sampled");
     CHECK(Lines(dir, "zombie_raw.csv") >= 1 + 2 * 4, "F18 zombie_raw.csv: unit, group and two men of each unit");
     CHECK(Lines(dir, "zombie_tasks.csv") == 5, "F19 zombie_tasks.csv: header + 4 tasks");
-    CHECK(Lines(dir, "zombie_setup.csv") == 7, "F22 zombie_setup.csv: header + set-up in / out, pop, stop, post, stop all");
+    CHECK(Lines(dir, "zombie_setup.csv") == 8, "F22 zombie_setup.csv: header + set-up in / out, pop, stop, post, stop all, re-form");
     CHECK(Field(dir, "zombie_tasks.csv", 2, "intercept", 8, v, sizeof(v)) && strcmp(v, "2") == 0, "F20 ... rout state 2");
     Hex32(Addr(z.g), key);
     CHECK(Field(dir, "zombie_fix.csv", 2, "rearm", 4, v, sizeof(v)) && strcmp(v, key) == 0, "F21 zombie_fix.csv: the re-armed group");

@@ -6,12 +6,12 @@ hooked game code on two fake battle units (unit, group, four men, a squad task i
 Four runs, each in a fresh folder under build/test_zombiefix/:
   fix      defaults: only the rout tick patched; a routing unit's group marked set up but
            without its rout task is re-armed, a group with it, an unmarked one and an empty one
-           are left alone; I off (counted only) / on; original bytes back at unload           (29)
-  off      ZOMBIEFIX_OFF=1: counted only until I, then re-armed                                (24)
+           are left alone; I off (counted only) / on; original bytes back at unload           (30)
+  off      ZOMBIEFIX_OFF=1: counted only until I, then re-armed                                (25)
   probe    ZOMBIEFIX_PROBE=1: every site patched, task and soldier machine transitions, pike
            and knockdown outcomes (the wrappers return the game's result), kills and a routing
            unit's contacts, tasks built for a routing unit's group, the fix's re-arm, morale
-           changes, stacks, positions, men and raw dumps logged                                (57)
+           changes, stacks, positions, men and raw dumps logged                                (59)
   corrupt  one changed byte in a hooked site: nothing installed                                (3)
 The proxy is copied as zombiefix_proxy.dll first (a module named dinput8.dll would clash with the
 system dinput8.dll that the proxy itself loads). Exit code 0 = all passed.
@@ -29,7 +29,7 @@ ARGS = [a for a in sys.argv[1:] if not a.startswith('--')]
 GAME = ARGS[0] if ARGS else r'E:\SteamLibrary\steamapps\common\Total War SHOGUN 2'
 BUILD = os.path.join(REPO, 'build')
 OUT = os.path.join(BUILD, 'test_zombiefix')
-EXPECT = {'fix': 29, 'off': 24, 'probe': 57, 'corrupt': 3}
+EXPECT = {'fix': 30, 'off': 25, 'probe': 59, 'corrupt': 3}
 
 game_dll = os.path.join(GAME, 'empire.retail.dll')
 for p in (game_dll, os.path.join(BUILD, 'dinput8.dll'), os.path.join(BUILD, 'zombiefix_test.exe')):

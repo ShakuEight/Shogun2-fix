@@ -51,7 +51,13 @@ count goes up after it broke".
 - Follow-up (user question "why only yari wall"): probe hooks on the rout set-up, stack pop, group
   stop, stop of every group, attack command post and the yari attack task constructor; runs
   113320, 113814, 114406 (in sync, fix off, dev build swapped in and the user's DLL put back after
-  each): exact sequence in ARCHITECTURE.md point 5; the yari link is open (point 6).
+  each): exact sequence in ARCHITECTURE.md point 5.
+- User's second replay `bow_route.replay` (12:22, zombie-only build de6ab403, fix off all battle,
+  log: 680 rout ticks, 0 groups without a rout task): runs 122446 / 123056 (zombie-only build from
+  current source, in sync): 0 zombies. Re-form hook `FUN_10154180`: run 122816 (yari, in sync)
+  shows the formation change re-form `FUN_1014e870` at every yari break, none for the bow units.
+  Answer in ARCHITECTURE.md point 6: yari wall drops at the break, the unit re-forms, a live
+  attack order restarts and re-forms again after the rout set-up.
 
 Pitfalls met:
 - A replay recorded with dev fixes on must be replayed with them on: the user may not know which
