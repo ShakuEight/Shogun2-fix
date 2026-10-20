@@ -9,7 +9,7 @@ addresses inside the stolen bytes are compared as stored on disk (image base
 
 The list below holds every patch site of every fix compiled into the DLL (pathfix,
 artillery-targeting-fix, fire-by-rank-fix, siege-responsiveness-fix, wall-manning-fix,
-zombie-yari-wall-fix, wall-collapse-fix): entry and mid-function
+zombie-yari-wall-fix, wall-collapse-fix, single-unit-group-fix): entry and mid-function
 hooks, functions a fix calls directly, and [imm32 patch] instructions whose immediate a fix
 rewrites. After the byte check the script fails when two sites share a byte, because
 the fixes must never patch the same code.
@@ -108,6 +108,33 @@ HOOKS = [
     ("FUN_101acfb0", 0x1ACFB0, "8B 44 24 04 89 41 14"),         # battle phase set
     ("FUN_103a3080", 0x3A3080, "8B 4C 24 04 8B 44 24 08"),      # soldier hit points set
     ("FUN_1043c870", 0x43C870, "56 57 8B F9 8B B7 D0 01 00 00"),  # (prologues_collapsefix_fix.txt) the fix: battle start gate damage
+    # single-unit-group-fix (docs/re/prologues_groupfix.txt): the [imm8 patch] count test of the
+    # group of the selection (whole CMP + JBE checked, only the immediate at +3 is written), the
+    # dev log hook right after it, then the probe-only hooks
+    ("FUN_10f89a40+0x3", 0xF89A43, "83 7E 28 01 76 3E"),        # [imm8 patch] selected units > 1
+    ("FUN_10f89a40+0x9", 0xF89A49, "8B 06 53 57 8B 7C 24 10"),  # group of the selection made (dev log)
+    ("FUN_10f9de40", 0xF9DE40, "56 8B F1 80 7E 20 00"),         # G shortcut
+    ("FUN_10f91e40", 0xF91E40, "83 EC 10 80 3D 4F E8 BB 11 01"),  # Ctrl+number shortcut
+    ("0x11211d20", 0x1211D20, "A1 80 81 BC 11"),                # lock formation button
+    ("FUN_101ffa70", 0x1FFA70, "83 EC 34 56 8B F1"),            # engine group finalised
+    ("FUN_10472ed0", 0x472ED0, "83 EC 0C 53 8B 5C 24 14"),      # unit removed from a group
+    ("FUN_1041dcc0", 0x41DCC0, "56 8B 74 24 08"),               # unit added to a group
+    ("FUN_10169170", 0x169170, "53 55 8B D9 56"),               # army destroys a group
+    # (docs/re/prologues_groupfix_ui.txt) probe-only: the interface side
+    ("FUN_110e7280", 0x10E7280, "83 EC 34 53 56"),              # group frames rebuilt
+    ("FUN_10f93fd0", 0xF93FD0, "83 EC 48 56 6A 00"),            # UI event CreateGroup
+    ("FUN_10f8de60", 0xF8DE60, "83 EC 24 6A 00"),               # UI event GroupSelectionChanged
+    ("FUN_11065720", 0x1065720, "83 EC 08 80 7C 24 14 00"),     # battle button shortcut
+    ("FUN_10fa37e0", 0xFA37E0, "83 EC 10 53 33 DB"),            # card manager shortcut
+    # (docs/re/prologues_groupfix_fix2.txt) the frame fix: the [imm8 patch] count test of the group
+    # frame (whole CMP + MOV checked, only the immediate at +3 is written) and the frame placement
+    # entry hook; then the probe-only group button sites
+    ("FUN_11223470+0xF", 0x122347F, "83 7D 04 01 8B 4B 04"),  # [imm8 patch] frame shown: units > 1
+    ("FUN_11223470", 0x1223470, "83 EC 50 53 55"),            # frame placement (fix: single row for one card)
+    ("FUN_10f9bf20", 0xF9BF20, "83 EC 18 53 55"),             # UI component state set
+    ("FUN_10f9c360", 0xF9C360, "83 EC 0C 53 8B 5C 24 14"),    # UI component visible
+    ("FUN_11216b20", 0x1216B20, "83 EC 30 56 57"),            # group button constructed
+    ("FUN_111016d0+0x366", 0x1101A36, "83 7C 24 38 01 76 21"),  # [imm8 patch] group button active: units > 1 (prologues_groupfix_fix3.txt)
 ]
 
 

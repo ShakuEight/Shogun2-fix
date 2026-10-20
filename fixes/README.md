@@ -11,6 +11,7 @@ Each folder here is one game fix compiled into the same `dinput8.dll`:
 | `wall-manning-fix/` (wallfix) | `WallFix_Install`, `WallFix_Remove` | `FIX_WALL_MANNING` (dev build only so far) |
 | `zombie-yari-wall-fix/` (zombiefix) | `ZombieFix_Install`, `ZombieFix_Remove` | `FIX_ZOMBIE_YARI_WALL` (dev build only so far) |
 | `wall-collapse-fix/` (collapsefix) | `CollapseFix_Install`, `CollapseFix_Remove` | `FIX_WALL_COLLAPSE` (dev build only so far) |
+| `single-unit-group-fix/` (groupfix) | `GroupFix_Install`, `GroupFix_Remove` | `FIX_SINGLE_UNIT_GROUP` (dev build only so far) |
 
 ## Adding a fix
 

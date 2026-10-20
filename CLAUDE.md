@@ -13,6 +13,7 @@ Runtime fixes for Total War: Shogun 2 (the original 32-bit `Empire.Retail.dll`),
 | wall-manning-fix (code name wallfix): units ordered onto a wall go straight to their wall positions (no staging march) | `fixes/wall-manning-fix/` | dev build (2026-10-18), no release |
 | zombie-yari-wall-fix (code name zombiefix): a unit that breaks mid-charge runs instead of standing in its yari wall and killing | `fixes/zombie-yari-wall-fix/` | dev build (2026-10-19), no release |
 | wall-collapse-fix (code name collapsefix): men deployed on a gatehouse no longer die at Start Battle (the battle start no longer smashes the gates of a castle whose gates are open to all) | `fixes/wall-collapse-fix/` | dev build (2026-10-19), no release |
+| single-unit-group-fix (code name groupfix): G, Ctrl+G and Ctrl+number accept a single unit (feature request) | `fixes/single-unit-group-fix/` | dev build (2026-10-20: selection, group-frame and group-button count tests > 0; G, Ctrl+G, Ctrl+number on one unit confirmed live, land and naval), no release |
 
 Shared code for all fixes lives in `proxy/` since 2026-10-18: hook engine `hook.h`, guarded
 memory and battle tick `gamemem.h`, keys and tones `keys.h` (dev only). API in `fixes/README.md`.

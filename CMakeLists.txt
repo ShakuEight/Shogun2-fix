@@ -26,6 +26,7 @@ option(FIX_SIEGE_RESPONSIVENESS "Siege responsiveness fix: defending units answe
 option(FIX_WALL_MANNING "Wall manning fix: units ordered onto a wall go straight there (fixes/wall-manning-fix)" ON)
 option(FIX_ZOMBIE_YARI_WALL "Zombie yari wall fix: routed yari wall units stop killing and run (fixes/zombie-yari-wall-fix)" ON)
 option(FIX_WALL_COLLAPSE "Wall collapse fix: men deployed on a gatehouse are not killed at Start Battle when the gates are open to all (fixes/wall-collapse-fix)" ON)
+option(FIX_SINGLE_UNIT_GROUP "Single unit group fix: G, Ctrl+G and Ctrl+number accept a single unit (fixes/single-unit-group-fix)" ON)
 option(TOOL_AUTORUN "Dev tool: version.dll proxy for unattended replay runs (tools/autorun); ignored with PUBLIC_RELEASE" OFF)
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
@@ -74,6 +75,9 @@ if(FIX_ZOMBIE_YARI_WALL AND NOT PUBLIC_RELEASE)
 endif()
 if(FIX_WALL_COLLAPSE AND NOT PUBLIC_RELEASE)
     include(fixes/wall-collapse-fix/wall-collapse-fix.cmake)
+endif()
+if(FIX_SINGLE_UNIT_GROUP AND NOT PUBLIC_RELEASE)
+    include(fixes/single-unit-group-fix/single-unit-group-fix.cmake)
 endif()
 
 # --- developer tools (separate proxy DLLs, never part of the public release) ---------------

@@ -31,6 +31,10 @@ void ZombieFix_Remove();
 void CollapseFix_Install();  // fixes/wall-collapse-fix/src/collapsefix.cpp
 void CollapseFix_Remove();
 #endif
+#ifdef FIX_SINGLE_UNIT_GROUP
+void GroupFix_Install();     // fixes/single-unit-group-fix/src/groupfix.cpp
+void GroupFix_Remove();
+#endif
 
 static const FixModule kFixes[] = {
 #ifdef FIX_PATHFIX
@@ -53,6 +57,9 @@ static const FixModule kFixes[] = {
 #endif
 #ifdef FIX_WALL_COLLAPSE
     { "wall-collapse-fix", CollapseFix_Install, CollapseFix_Remove },
+#endif
+#ifdef FIX_SINGLE_UNIT_GROUP
+    { "single-unit-group-fix", GroupFix_Install, GroupFix_Remove },
 #endif
     { nullptr, nullptr, nullptr }
 };

@@ -13,6 +13,7 @@ own folder. Install by copying it in, uninstall by deleting it.
 | [**wall-manning-fix**](fixes/wall-manning-fix/README.md) | A unit ordered to man a wall section marches to a staging point inside the castle first, re-forms there, and only then walks onto the wall; units coming from another side walk there and back | Dev build |
 | [**zombie-yari-wall-fix**](fixes/zombie-yari-wall-fix/README.md) | A yari wall unit that breaks in the middle of a charge sometimes does not run: it stands in its yari wall, counted as routing, and keeps killing whatever touches it | Dev build |
 | [**wall-collapse-fix**](fixes/wall-collapse-fix/README.md) | In a siege defence, men deployed on a gatehouse die at Start Battle when the campaign left the castle's gates open: the game smashes the intact gate doors on the first tick | Dev build |
+| [**single-unit-group-fix**](fixes/single-unit-group-fix/README.md) | Feature: G, Ctrl+G and Ctrl+number refuse a single unit (a group needs two); the fix lets one unit form a soft or locked group | Dev build |
 
 ## For players
 
@@ -72,6 +73,7 @@ fixes/
   wall-manning-fix/ the wall manning fix (wallfix): dev build, harness, docs (no release source yet)
   zombie-yari-wall-fix/ the zombie yari wall fix (zombiefix): dev build, harness, docs (no release source yet)
   wall-collapse-fix/ the wall collapse fix (collapsefix): dev build, harness, docs (no release source yet)
+  single-unit-group-fix/ the single unit group fix (groupfix): dev build, harness, docs (no release source yet)
 docs/re/            what is known about Empire.Retail.dll, shared by all fixes: function
                     maps x86 to x64 and engine decodes (Ghidra output stays local)
 tools/

@@ -23,6 +23,7 @@ function names and offsets.
 | `re/wall_manning_x86.md` | The man-the-wall order: the wall task's staging test and staging point, the unit move action, the per-man form-up onto the wall positions |
 | `re/path_queue_x86.md` | The pathfinder's request queue and per-tick budgets |
 | `re/building_destruction_x86.md` | Buildings and their pieces: destruct levels, damage, collapse, the campaign's fort damage at battle set-up, the battle start's gate damage, the gates-open flag |
+| `re/unit_groups_x86.md` | Player unit groups: the G / Ctrl+number / Ctrl+G shortcuts, the selection manager, the two-unit test of the group of the selection, the engine group commands (no count limit) |
 | `re/console_commands_x86.md` | Startup commands and `user.script.txt`, the `replay` startup mode, the battle phase and the pointer path the autorun tool reads |
 
 Where a note quoted decompiler output or disassembly, the quote is replaced by a marker such as
