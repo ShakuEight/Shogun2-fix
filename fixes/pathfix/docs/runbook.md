@@ -41,7 +41,8 @@ FUN_10154180 is not hooked by pathfix (zombie-yari-wall-fix's probe site).
   I again to switch it off: one low tone. The key works at any time and only while the game
   window has the focus.
 - Three long low tones mean a self-check failed and the fix switched itself off for the session.
-  The reason is in `<game>\pathfix_log.txt`.
+  The reason is in `<game>\pathfix_log.txt`. A naval battle triggers this every time (apex match;
+  README "Known limitations"); it is not a fault of the land battle that follows.
 - Every line of `<game>\pathfix_log.txt` starts with the local time `[hh:mm:ss.mmm]`. The file is
   rewritten at each launch.
 

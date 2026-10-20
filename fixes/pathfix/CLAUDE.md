@@ -986,3 +986,13 @@ formation, player can set rank depth as they please").
 Next (not started): user live check (yari wall through the gatehouse and round the corner, I off
 and on, P recordings), a second depth (one shallow, one deep wall), and whether the end-gap rule
 also hurts block units at corridors with a parallel passage. Release 1.0 has no yari part.
+
+## Note 2026-10-20: self-check alarm in naval battles
+
+In a naval custom battle the apex-match self-check fails on every checked type-0 apex call
+(110 / 110 in replay `control group 4 naval`, 45 / 45 live) and sounds the alarm (three long low
+tones), even with the fix off at launch. Ship paths do not use the land endpoint helpers. The
+public release 1.0 has the same check (first 200 apex calls after launch, silent): a naval battle
+as the first battle of a session leaves G off for the land battles after it. Documented in
+README "Known limitations" and the runbook. Open: skip the self-checks (and the fix) in naval
+battles. Found during the groupfix live check.

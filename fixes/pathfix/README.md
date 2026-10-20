@@ -435,6 +435,14 @@ reference it uses are shared with the other fixes and live at the repository roo
 - **Yari wall (v43) tested on one replay.** The rules were checked on two yari units of one
   battle (one gatehouse, one long corridor, one hairpin), not yet live. Other special
   formations (square, wedge and the rest) keep their own slot generators and are untouched.
+- **Naval battles switch the fix off.** Ship paths do not use the land path helpers, so the
+  apex-match self-check fails on every checked call in a naval battle (110 of 110 in replay
+  `control group 4 naval`, 2026-10-20) and the fix switches itself off for the rest of the game
+  session. In the dev build this sounds the alarm (three long low tones), even when the fix was
+  off. The public release 1.0 has the same check without a sound: it checks only the first 200
+  apex calls after launch, so when the first battle of a session is a naval one, G stays off in
+  the land battles after it until the game is restarted. Planned: skip the self-checks and the
+  fix in naval battles.
 - **Original 32-bit game only, single player only.**
 
 ---
