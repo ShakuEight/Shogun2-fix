@@ -9,10 +9,11 @@ addresses inside the stolen bytes are compared as stored on disk (image base
 
 The list below holds every patch site of every fix compiled into the DLL (pathfix,
 artillery-targeting-fix, fire-by-rank-fix, siege-responsiveness-fix, wall-manning-fix,
-zombie-yari-wall-fix, wall-collapse-fix, single-unit-group-fix): entry and mid-function
-hooks, functions a fix calls directly, and [imm32 patch] instructions whose immediate a fix
-rewrites. After the byte check the script fails when two sites share a byte, because
-the fixes must never patch the same code.
+zombie-yari-wall-fix, wall-collapse-fix, single-unit-group-fix, guard-mode-ranged-fix): entry
+and mid-function hooks, functions a fix calls directly, [imm32 patch] instructions whose
+immediate a fix rewrites, and [rel32 patch] CALLs whose displacement a fix points at its own
+code. After the byte check the script fails when two sites share a byte, because the fixes
+must never patch the same code.
 """
 import struct
 import sys
@@ -135,6 +136,19 @@ HOOKS = [
     ("FUN_10f9c360", 0xF9C360, "83 EC 0C 53 8B 5C 24 14"),    # UI component visible
     ("FUN_11216b20", 0x1216B20, "83 EC 30 56 57"),            # group button constructed
     ("FUN_111016d0+0x366", 0x1101A36, "83 7C 24 38 01 76 21"),  # [imm8 patch] group button active: units > 1 (prologues_groupfix_fix3.txt)
+    # guard-mode-ranged-fix (docs/re/prologues_guardfix.txt): seven [rel32 patch] CALLs in the missile
+    # attack task's state updates (whole CALL checked, only its displacement is written); its probe
+    # hooks also use the transition site FUN_11374cf0+0x1B (fire-by-rank-fix) and the attack command
+    # post FUN_103daa80 (zombie-yari-wall-fix), listed once each
+    ("FUN_100fa100+0x2E", 0x0FA12E, "E8 8D 4E 0B 00"),          # [rel32 patch] FIRE: out of range test
+    ("FUN_100fa1d0+0x2E", 0x0FA1FE, "E8 BD 4D 0B 00"),          # [rel32 patch] FIRE_UNFORMED: out of range test
+    ("FUN_100fa300+0x2E", 0x0FA32E, "E8 8D 4C 0B 00"),          # [rel32 patch] PERFORM_CAN_SHOOT_TEST: out of range test
+    ("FUN_100fa100+0x1B", 0x0FA11B, "E8 40 83 0B 00"),          # [rel32 patch] FIRE: target test
+    ("FUN_100fa1d0+0x1B", 0x0FA1EB, "E8 70 82 0B 00"),          # [rel32 patch] FIRE_UNFORMED: target test
+    ("FUN_100fa300+0x1F", 0x0FA31F, "E8 3C 81 0B 00"),          # [rel32 patch] PERFORM_CAN_SHOOT_TEST: target test
+    ("0x100f8070+0x1B", 0x0F808B, "E8 D0 A3 0B 00"),            # [rel32 patch] INTERCEPT: target test
+    ("FUN_101752d0", 0x1752D0, "83 EC 58 8B 4C 24 60"),       # (prologues_guardfix_faw.txt) the fix: fire at will target choice
+    ("FUN_1012d660", 0x12D660, "56 FF 74 24 0C"),             # (prologues_guardfix_task.txt) probe: unit attack task constructor
 ]
 
 

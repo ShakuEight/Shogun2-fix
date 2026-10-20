@@ -35,6 +35,10 @@ void CollapseFix_Remove();
 void GroupFix_Install();     // fixes/single-unit-group-fix/src/groupfix.cpp
 void GroupFix_Remove();
 #endif
+#ifdef FIX_GUARD_MODE_RANGED
+void GuardFix_Install();     // fixes/guard-mode-ranged-fix/src/guardfix.cpp
+void GuardFix_Remove();
+#endif
 
 static const FixModule kFixes[] = {
 #ifdef FIX_PATHFIX
@@ -60,6 +64,9 @@ static const FixModule kFixes[] = {
 #endif
 #ifdef FIX_SINGLE_UNIT_GROUP
     { "single-unit-group-fix", GroupFix_Install, GroupFix_Remove },
+#endif
+#ifdef FIX_GUARD_MODE_RANGED
+    { "guard-mode-ranged-fix", GuardFix_Install, GuardFix_Remove },
 #endif
     { nullptr, nullptr, nullptr }
 };

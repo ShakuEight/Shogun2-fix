@@ -394,6 +394,7 @@ int main(int argc, char** argv) {
     SetEnvironmentVariableA("SIEGEFIX_PROBE", nullptr);
     SetEnvironmentVariableA("FBRFIX_PROBE", nullptr);
     SetEnvironmentVariableA("ARTFIX_PROBE", nullptr);
+    SetEnvironmentVariableA("GUARDFIX_PROBE", nullptr);
     SetEnvironmentVariableA("PATHFIX_CAPTURE", nullptr);
 
     HMODULE game = LoadLibraryExA(argv[1], nullptr, DONT_RESOLVE_DLL_REFERENCES);

@@ -290,6 +290,7 @@ int main(int argc, char** argv) {
     bool selfcheck = strcmp(mode, "selfcheck") == 0;
     SetEnvironmentVariableA("ARTFIX_OFF", off ? "1" : nullptr);
     SetEnvironmentVariableA("ARTFIX_PROBE", nullptr);
+    SetEnvironmentVariableA("GUARDFIX_PROBE", nullptr);
     SetEnvironmentVariableA("PATHFIX_CAPTURE", nullptr);
 
     HMODULE game = LoadLibraryExA(argv[1], nullptr, DONT_RESOLVE_DLL_REFERENCES);
