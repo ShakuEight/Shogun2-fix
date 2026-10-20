@@ -15,6 +15,7 @@ Runtime fixes for Total War: Shogun 2 (the original 32-bit `Empire.Retail.dll`),
 | wall-collapse-fix (code name collapsefix): men deployed on a gatehouse no longer die at Start Battle (the battle start no longer smashes the gates of a castle whose gates are open to all) | `fixes/wall-collapse-fix/` | dev build (2026-10-19), no release |
 | single-unit-group-fix (code name groupfix): G, Ctrl+G and Ctrl+number accept a single unit (feature request) | `fixes/single-unit-group-fix/` | dev build (2026-10-20: selection, group-frame and group-button count tests > 0; G, Ctrl+G, Ctrl+number on one unit confirmed live, land and naval), no release |
 | guard-mode-ranged-fix (code name guardfix): missile units in guard mode no longer chase a target that left their range, and drop shattered targets (fire at will takes another enemy in range or holds fire) | `fixes/guard-mode-ranged-fix/` | dev build (2026-10-20: seven missile task calls redirected + fire at will's choice filtered; replay `guard mode` needs `--linger 90`), no release |
+| kneel-fire-move-fix (code name kneelfix): FotS units with Kneel Fire on take move orders (kneel fire stays on) | `fixes/kneel-fire-move-fix/` | dev build (2026-10-20: eight can-move calls in the move-order builders skip the kneel step; replay `kneel fire` in sync fix off and on, live check open), no release |
 
 Shared code for all fixes lives in `proxy/` since 2026-10-18: hook engine `hook.h`, guarded
 memory and battle tick `gamemem.h`, keys and tones `keys.h` (dev only). API in `fixes/README.md`.

@@ -13,6 +13,7 @@ Each folder here is one game fix compiled into the same `dinput8.dll`:
 | `wall-collapse-fix/` (collapsefix) | `CollapseFix_Install`, `CollapseFix_Remove` | `FIX_WALL_COLLAPSE` (dev build only so far) |
 | `single-unit-group-fix/` (groupfix) | `GroupFix_Install`, `GroupFix_Remove` | `FIX_SINGLE_UNIT_GROUP` (dev build only so far) |
 | `guard-mode-ranged-fix/` (guardfix) | `GuardFix_Install`, `GuardFix_Remove` | `FIX_GUARD_MODE_RANGED` (dev build only so far) |
+| `kneel-fire-move-fix/` (kneelfix) | `KneelFix_Install`, `KneelFix_Remove` | `FIX_KNEEL_FIRE_MOVE` (dev build only so far) |
 
 ## Adding a fix
 

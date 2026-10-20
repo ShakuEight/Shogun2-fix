@@ -39,6 +39,10 @@ void GroupFix_Remove();
 void GuardFix_Install();     // fixes/guard-mode-ranged-fix/src/guardfix.cpp
 void GuardFix_Remove();
 #endif
+#ifdef FIX_KNEEL_FIRE_MOVE
+void KneelFix_Install();     // fixes/kneel-fire-move-fix/src/kneelfix.cpp
+void KneelFix_Remove();
+#endif
 
 static const FixModule kFixes[] = {
 #ifdef FIX_PATHFIX
@@ -67,6 +71,9 @@ static const FixModule kFixes[] = {
 #endif
 #ifdef FIX_GUARD_MODE_RANGED
     { "guard-mode-ranged-fix", GuardFix_Install, GuardFix_Remove },
+#endif
+#ifdef FIX_KNEEL_FIRE_MOVE
+    { "kneel-fire-move-fix", KneelFix_Install, KneelFix_Remove },
 #endif
     { nullptr, nullptr, nullptr }
 };

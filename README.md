@@ -15,6 +15,7 @@ own folder. Install by copying it in, uninstall by deleting it.
 | [**wall-collapse-fix**](fixes/wall-collapse-fix/README.md) | In a siege defence, men deployed on a gatehouse die at Start Battle when the campaign left the castle's gates open: the game smashes the intact gate doors on the first tick | Dev build |
 | [**single-unit-group-fix**](fixes/single-unit-group-fix/README.md) | Feature: G, Ctrl+G and Ctrl+number refuse a single unit (a group needs two); the fix lets one unit form a soft or locked group | Dev build |
 | [**guard-mode-ranged-fix**](fixes/guard-mode-ranged-fix/README.md) | Missile units in guard mode chase a target that left their range and keep shooting at shattered units; the fix keeps them in place and makes them pick another target in range or hold fire | Dev build |
+| [**kneel-fire-move-fix**](fixes/kneel-fire-move-fix/README.md) | Fall of the Samurai units with Kneel Fire switched on refuse every move order; the player has to switch it off, move, and switch it on again. The fix lets them move with Kneel Fire kept on | Dev build |
 
 ## For players
 
@@ -76,6 +77,7 @@ fixes/
   wall-collapse-fix/ the wall collapse fix (collapsefix): dev build, harness, docs (no release source yet)
   single-unit-group-fix/ the single unit group fix (groupfix): dev build, harness, docs (no release source yet)
   guard-mode-ranged-fix/ the guard mode ranged fix (guardfix): dev build, harness, docs (no release source yet)
+  kneel-fire-move-fix/ the kneel fire move fix (kneelfix): dev build, harness, docs (no release source yet)
 docs/re/            what is known about Empire.Retail.dll, shared by all fixes: function
                     maps x86 to x64 and engine decodes (Ghidra output stays local)
 tools/

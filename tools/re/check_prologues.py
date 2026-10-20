@@ -9,7 +9,8 @@ addresses inside the stolen bytes are compared as stored on disk (image base
 
 The list below holds every patch site of every fix compiled into the DLL (pathfix,
 artillery-targeting-fix, fire-by-rank-fix, siege-responsiveness-fix, wall-manning-fix,
-zombie-yari-wall-fix, wall-collapse-fix, single-unit-group-fix, guard-mode-ranged-fix): entry
+zombie-yari-wall-fix, wall-collapse-fix, single-unit-group-fix, guard-mode-ranged-fix,
+kneel-fire-move-fix): entry
 and mid-function hooks, functions a fix calls directly, [imm32 patch] instructions whose
 immediate a fix rewrites, and [rel32 patch] CALLs whose displacement a fix points at its own
 code. After the byte check the script fails when two sites share a byte, because the fixes
@@ -149,6 +150,18 @@ HOOKS = [
     ("0x100f8070+0x1B", 0x0F808B, "E8 D0 A3 0B 00"),            # [rel32 patch] INTERCEPT: target test
     ("FUN_101752d0", 0x1752D0, "83 EC 58 8B 4C 24 60"),       # (prologues_guardfix_faw.txt) the fix: fire at will target choice
     ("FUN_1012d660", 0x12D660, "56 FF 74 24 0C"),             # (prologues_guardfix_task.txt) probe: unit attack task constructor
+    # kneel-fire-move-fix (docs/re/prologues_kneelfix.txt): eight [rel32 patch] CALLs of the can-move
+    # test FUN_1015c3f0 in the move order builders and the selection test; FUN_1015c3f0 itself is
+    # called and entered at +0x1A by the fix (its first 32 bytes checked, prologues_kneelfix_skip.txt)
+    ("FUN_10400870+0x7A", 0x4008EA, "E8 01 BB D5 FF"),          # [rel32 patch] click move: one unit
+    ("FUN_10400870+0x123", 0x400993, "E8 58 BA D5 FF"),         # [rel32 patch] click move: selection filter
+    ("FUN_10400870+0x663", 0x400ED3, "E8 18 B5 D5 FF"),         # [rel32 patch] click move: selection filter (placements)
+    ("FUN_10401c50+0xFF", 0x401D4F, "E8 9C A6 D5 FF"),          # [rel32 patch] drag move: selection filter
+    ("FUN_10401c50+0x819", 0x402469, "E8 82 9F D5 FF"),         # [rel32 patch] drag move: selection filter (placements)
+    ("FUN_104367a0+0x8B", 0x43682B, "E8 C0 5B D2 FF"),          # [rel32 patch] selection: any unit can move
+    ("FUN_104367a0+0xD2", 0x436872, "E8 79 5B D2 FF"),          # [rel32 patch] selection: any unit can move
+    ("FUN_1048c7d0+0x47", 0x48C817, "E8 D4 FB CC FF"),          # [rel32 patch] drag move: one unit
+    ("FUN_1015c3f0", 0x15C3F0, "56 8B F1 8B 86 D4 0E 00 00 8D 8E D4 0E 00 00 6A 39 8B 40 04 FF D0 84 C0 75 45 8B 46 14 8B 48 08"),  # called, entered at +0x1A
 ]
 
 

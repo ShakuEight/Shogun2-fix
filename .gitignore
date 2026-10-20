@@ -1,5 +1,6 @@
 # build output
 /build/
+/build_live_*/
 *.obj
 *.exp
 *.lib

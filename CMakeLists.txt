@@ -28,6 +28,7 @@ option(FIX_ZOMBIE_YARI_WALL "Zombie yari wall fix: routed yari wall units stop k
 option(FIX_WALL_COLLAPSE "Wall collapse fix: men deployed on a gatehouse are not killed at Start Battle when the gates are open to all (fixes/wall-collapse-fix)" ON)
 option(FIX_SINGLE_UNIT_GROUP "Single unit group fix: G, Ctrl+G and Ctrl+number accept a single unit (fixes/single-unit-group-fix)" ON)
 option(FIX_GUARD_MODE_RANGED "Guard mode ranged fix: missile units in guard mode do not chase targets out of range and drop shattered targets (fixes/guard-mode-ranged-fix)" ON)
+option(FIX_KNEEL_FIRE_MOVE "Kneel fire move fix: units with kneel fire on take move orders (fixes/kneel-fire-move-fix)" ON)
 option(TOOL_AUTORUN "Dev tool: version.dll proxy for unattended replay runs (tools/autorun); ignored with PUBLIC_RELEASE" OFF)
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
@@ -82,6 +83,9 @@ if(FIX_SINGLE_UNIT_GROUP AND NOT PUBLIC_RELEASE)
 endif()
 if(FIX_GUARD_MODE_RANGED AND NOT PUBLIC_RELEASE)
     include(fixes/guard-mode-ranged-fix/guard-mode-ranged-fix.cmake)
+endif()
+if(FIX_KNEEL_FIRE_MOVE AND NOT PUBLIC_RELEASE)
+    include(fixes/kneel-fire-move-fix/kneel-fire-move-fix.cmake)
 endif()
 
 # --- developer tools (separate proxy DLLs, never part of the public release) ---------------

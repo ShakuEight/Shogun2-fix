@@ -15,6 +15,7 @@ python -I fixes\zombie-yari-wall-fix\tests\run_tests.py "%GAME_DIR%" || set "FAI
 python -I fixes\wall-collapse-fix\tests\run_tests.py "%GAME_DIR%" || set "FAILED=1"
 python -I fixes\single-unit-group-fix\tests\run_tests.py "%GAME_DIR%" || set "FAILED=1"
 python -I fixes\guard-mode-ranged-fix\tests\run_tests.py "%GAME_DIR%" || set "FAILED=1"
+python -I fixes\kneel-fire-move-fix\tests\run_tests.py "%GAME_DIR%" || set "FAILED=1"
 REM dev tools, when built (build.bat -DTOOL_AUTORUN=ON)
 if exist build\autorun_forward_test.exe (
     build\autorun_forward_test.exe "%~dp0build\version.dll" || set "FAILED=1"
